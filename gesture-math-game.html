@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>Gesture Shooting Math Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+            background: #000;
+            touch-action: none;
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        #hiddenVideo {
+            position: absolute;
+            top: -9999px;
+            left: -9999px;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            transition: opacity 0.3s;
+        }
+
+        .overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .overlay h1 {
+            color: #fff;
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            text-align: center;
+            padding: 0 1rem;
+        }
+
+        .overlay p {
+            color: #aaa;
+            font-size: 1rem;
+            margin-bottom: 2rem;
+            text-align: center;
+            padding: 0 1rem;
+            max-width: 600px;
+        }
+
+        .btn {
+            padding: 1rem 2rem;
+            font-size: 1.2rem;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            cursor: pointer;
+            transition: transform 0.2s;
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        #hud {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            padding: 1rem;
+            z-index: 100;
+            color: white;
+            pointer-events: none;
+        }
+
+        .hud-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .hud-item {
+            background: rgba(0, 0, 0, 0.7);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        .question-display {
+            background: rgba(102, 126, 234, 0.9);
+            padding: 1rem 2rem;
+            border-radius: 12px;
+            font-size: 2rem;
+            text-align: center;
+            margin: 1rem auto;
+            max-width: 90%;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .streak-display {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .feedback {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 4rem;
+            font-weight: bold;
+            z-index: 500;
+            pointer-events: none;
+            animation: feedbackPop 0.6s ease-out;
+            text-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+        }
+
+        @keyframes feedbackPop {
+            0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+            50% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+        }
+
+        .leaderboard {
+            background: rgba(0, 0, 0, 0.95);
+            padding: 2rem;
+            border-radius: 16px;
+            max-width: 90%;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        .leaderboard-entry {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.8rem;
+            margin-bottom: 0.5rem;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+        }
+
+        .leaderboard-entry:first-child {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        @media (max-width: 480px) {
+            .overlay h1 { font-size: 1.8rem; }
+            .question-display { font-size: 1.5rem; }
+            .feedback { font-size: 3rem; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Hidden video element for MediaPipe -->
+    <video id="hiddenVideo" playsinline autoplay></video>
+
+    <!-- Three.js canvas -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- HUD -->
+    <div id="hud" class="hidden">
+        <div class="hud-row">
+            <div class="hud-item">Score: <span id="scoreDisplay">0</span></div>
+            <div class="hud-item">Time: <span id="timeDisplay">60</span>s</div>
+        </div>
+        <div class="hud-row">
+            <div class="hud-item" id="streakDisplay">Streak: <span id="streakValue">0</span></div>
+            <div class="hud-item">Q: <span id="questionCount">0</span>/10</div>
+        </div>
+        <div class="question-display" id="questionDisplay">?</div>
+    </div>
+
+    <!-- Start Overlay -->
+    <div id="startOverlay" class="overlay">
+        <h1>🎯 Math Shooting Game</h1>
+        <p>Use hand gestures to shoot the correct answers!<br>
+        Make a pistol gesture: point with index finger, thumb up.<br>
+        <strong>Camera access needed (your image is never shown or saved)</strong></p>
+        <button class="btn" onclick="startGame()">Start Game</button>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="overlay hidden">
+        <div class="spinner"></div>
+        <h1>Loading...</h1>
+        <p>Initializing hand tracking model</p>
+    </div>
+
+    <!-- Error Overlay -->
+    <div id="errorOverlay" class="overlay hidden">
+        <h1>⚠️ Error</h1>
+        <p id="errorMessage">Something went wrong</p>
+        <button class="btn" onclick="retryGame()">Retry</button>
+    </div>
+
+    <!-- Results Overlay -->
+    <div id="resultsOverlay" class="overlay hidden">
+        <h1>🎉 Round Complete!</h1>
+        <div class="leaderboard" id="leaderboardDisplay"></div>
+        <button class="btn" onclick="nextRound()">Next Round</button>
+    </div>
+
+    <!-- Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <!-- MediaPipe Hands - PINNED VERSION 0.4.1646424915 -->
+    <script src="https://unpkg.com/@mediapipe/hands@0.4.1646424915/hands.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/@mediapipe/camera_utils@0.3.1640029074/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/@mediapipe/drawing_utils@0.3.1620248257/drawing_utils.js" crossorigin="anonymous"></script>
+
+    <script>
+        // ============================================
+        // GLOBAL STATE
+        // ============================================
+        const STATE = {
+            scene: null,
+            camera: null,
+            renderer: null,
+            hands: null,
+            videoElement: null,
+            audioContext: null,
+
+            // Game state
+            score: 0,
+            streak: 0,
+            timeLeft: 60,
+            questionIndex: 0,
+            currentQuestion: null,
+            targets: [],
+
+            // Hand tracking
+            handsData: [],
+            lastLandmarks: null,
+
+            // Timing
+            lastDetectionTime: 0,
+            detectionInterval: 1000 / 12, // 12 FPS
+            gameStartTime: 0,
+
+            // Party mode
+            players: [],
+            currentPlayerIndex: 0,
+
+            // Gesture FSM per hand
+            handStates: [{}, {}],
+
+            // VFX
+            particles: [],
+            lasers: [],
+
+            // Flags
+            isRunning: false,
+            isPaused: false,
+            modelReady: false,
+        };
+
+        // ============================================
+        // MATH QUESTION GENERATOR
+        // ============================================
+        const QUESTION_TEMPLATES = [
+            // Addition strategies
+            {
+                type: 'make_ten',
+                generate: () => {
+                    const a = 7 + Math.floor(Math.random() * 3); // 7-9
+                    const b = (10 - a) + Math.floor(Math.random() * 5); // complete to 10 + extra
+                    const strategy = [10, a + b - 10];
+                    return { question: `${a} + ${b}`, answer: a + b, strategy, hint: 'Make 10 first!' };
+                }
+            },
+            {
+                type: 'doubles',
+                generate: () => {
+                    const base = 3 + Math.floor(Math.random() * 7); // 3-9
+                    const isPlus = Math.random() > 0.5;
+                    const offset = isPlus ? 1 : -1;
+                    const a = base;
+                    const b = base + offset;
+                    const strategy = [base * 2, base * 2 + offset];
+                    return {
+                        question: `${a} + ${b}`,
+                        answer: a + b,
+                        strategy,
+                        hint: `Think: ${base} + ${base} = ${base*2}`
+                    };
+                }
+            },
+            {
+                type: 'compensation',
+                generate: () => {
+                    const a = 15 + Math.floor(Math.random() * 20); // 15-34
+                    const b = 9 + Math.floor(Math.random() * 3); // 9-11
+                    const roundB = Math.round(b / 10) * 10;
+                    const diff = roundB - b;
+                    const strategy = [a + roundB, (a + roundB) - diff];
+                    return {
+                        question: `${a} + ${b}`,
+                        answer: a + b,
+                        strategy,
+                        hint: `Round ${b} to ${roundB}, then adjust!`
+                    };
+                }
+            },
+            // Subtraction strategies
+            {
+                type: 'subtract_by_adding',
+                generate: () => {
+                    const answer = 3 + Math.floor(Math.random() * 8); // 3-10
+                    const a = 10 + Math.floor(Math.random() * 10); // 10-19
+                    const b = a - answer;
+                    const strategy = [answer];
+                    return {
+                        question: `${a} - ${b}`,
+                        answer,
+                        strategy,
+                        hint: `What + ${b} = ${a}?`
+                    };
+                }
+            },
+            {
+                type: 'subtract_in_chunks',
+                generate: () => {
+                    const a = 20 + Math.floor(Math.random() * 30); // 20-49
+                    const tensToSubtract = 1 + Math.floor(Math.random() * 2); // 10 or 20
+                    const onesSubtract = 3 + Math.floor(Math.random() * 5); // 3-7
+                    const b = tensToSubtract * 10 + onesSubtract;
+                    const strategy = [a - tensToSubtract * 10, a - b];
+                    return {
+                        question: `${a} - ${b}`,
+                        answer: a - b,
+                        strategy,
+                        hint: `Subtract ${tensToSubtract * 10} first!`
+                    };
+                }
+            }
+        ];
+
+        function generateQuestion() {
+            const template = QUESTION_TEMPLATES[Math.floor(Math.random() * QUESTION_TEMPLATES.length)];
+            const q = template.generate();
+
+            // Generate distractors
+            const distractors = new Set();
+            distractors.add(q.answer + 1);
+            distractors.add(q.answer - 1);
+            distractors.add(q.answer + 10);
+            distractors.add(q.answer - 10);
+
+            while (distractors.size < 5) {
+                const offset = (Math.random() - 0.5) * 20;
+                distractors.add(Math.max(0, q.answer + Math.floor(offset)));
+            }
+
+            // Remove answer from distractors
+            distractors.delete(q.answer);
+
+            // Combine with strategy intermediate values
+            const allNumbers = [q.answer, ...q.strategy, ...Array.from(distractors)];
+            const uniqueNumbers = [...new Set(allNumbers)].filter(n => n >= 0);
+
+            return {
+                ...q,
+                allNumbers: uniqueNumbers.slice(0, 8)
+            };
+        }
+
+        // ============================================
+        // AUDIO SYSTEM (iOS-SAFE)
+        // ============================================
+        function initAudio() {
+            try {
+                STATE.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+                // iOS requires user interaction
+                if (STATE.audioContext.state === 'suspended') {
+                    STATE.audioContext.resume();
+                }
+            } catch (e) {
+                console.warn('Web Audio not supported', e);
+            }
+        }
+
+        function playTone(frequency, duration, type = 'correct') {
+            if (!STATE.audioContext) return;
+
+            try {
+                const osc = STATE.audioContext.createOscillator();
+                const gain = STATE.audioContext.createGain();
+
+                osc.connect(gain);
+                gain.connect(STATE.audioContext.destination);
+
+                osc.frequency.value = frequency;
+                osc.type = type === 'shoot' ? 'square' : 'sine';
+
+                gain.gain.setValueAtTime(0.3, STATE.audioContext.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, STATE.audioContext.currentTime + duration);
+
+                osc.start(STATE.audioContext.currentTime);
+                osc.stop(STATE.audioContext.currentTime + duration);
+            } catch (e) {
+                console.warn('Audio playback failed', e);
+            }
+        }
+
+        function playSFX(type) {
+            switch (type) {
+                case 'shoot':
+                    playTone(200, 0.1, 'shoot');
+                    break;
+                case 'correct':
+                    playTone(523, 0.2);
+                    setTimeout(() => playTone(659, 0.2), 100);
+                    break;
+                case 'smart':
+                    playTone(659, 0.15);
+                    setTimeout(() => playTone(784, 0.15), 80);
+                    setTimeout(() => playTone(880, 0.2), 160);
+                    break;
+                case 'wrong':
+                    playTone(200, 0.3);
+                    break;
+                case 'miss':
+                    playTone(150, 0.15);
+                    break;
+            }
+        }
+
+        // ============================================
+        // THREE.JS SCENE SETUP
+        // ============================================
+        function initThreeJS() {
+            const canvas = document.getElementById('gameCanvas');
+
+            // Scene
+            STATE.scene = new THREE.Scene();
+            STATE.scene.background = new THREE.Color(0x1a1a2e);
+            STATE.scene.fog = new THREE.Fog(0x1a1a2e, 10, 50);
+
+            // Camera
+            STATE.camera = new THREE.PerspectiveCamera(
+                75,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                1000
+            );
+            STATE.camera.position.z = 15;
+
+            // Renderer
+            STATE.renderer = new THREE.WebGLRenderer({
+                canvas,
+                antialias: true,
+                powerPreference: 'high-performance'
+            });
+            STATE.renderer.setSize(window.innerWidth, window.innerHeight);
+            STATE.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            STATE.scene.add(ambientLight);
+
+            const pointLight = new THREE.PointLight(0x667eea, 1, 100);
+            pointLight.position.set(0, 10, 10);
+            STATE.scene.add(pointLight);
+
+            // Grid floor
+            const gridHelper = new THREE.GridHelper(50, 50, 0x667eea, 0x444444);
+            gridHelper.position.y = -5;
+            STATE.scene.add(gridHelper);
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function onWindowResize() {
+            STATE.camera.aspect = window.innerWidth / window.innerHeight;
+            STATE.camera.updateProjectionMatrix();
+            STATE.renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // ============================================
+        // TARGET MANAGEMENT
+        // ============================================
+        function createTarget(number, isAnswer, isStrategy) {
+            const geometry = new THREE.SphereGeometry(0.8, 16, 16);
+
+            let color = 0x888888; // default
+            if (isAnswer) color = 0x4CAF50; // green for correct answer
+            else if (isStrategy) color = 0xFFEB3B; // yellow for strategy intermediate
+
+            const material = new THREE.MeshPhongMaterial({
+                color,
+                emissive: color,
+                emissiveIntensity: 0.3
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+
+            // Random position
+            const angle = Math.random() * Math.PI * 2;
+            const radius = 8 + Math.random() * 4;
+            const height = -2 + Math.random() * 8;
+
+            mesh.position.set(
+                Math.cos(angle) * radius,
+                height,
+                Math.sin(angle) * radius - 10
+            );
+
+            // Add text label
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 120px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(number.toString(), 128, 128);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+            const sprite = new THREE.Sprite(spriteMaterial);
+            sprite.scale.set(1.5, 1.5, 1);
+            mesh.add(sprite);
+
+            mesh.userData = {
+                number,
+                isAnswer,
+                isStrategy,
+                velocity: new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.02,
+                    (Math.random() - 0.5) * 0.02,
+                    0
+                )
+            };
+
+            STATE.scene.add(mesh);
+            STATE.targets.push(mesh);
+
+            return mesh;
+        }
+
+        function spawnTargets() {
+            // Clear old targets
+            STATE.targets.forEach(t => STATE.scene.remove(t));
+            STATE.targets = [];
+
+            if (!STATE.currentQuestion) return;
+
+            const { answer, strategy, allNumbers } = STATE.currentQuestion;
+
+            allNumbers.forEach(num => {
+                const isAnswer = num === answer;
+                const isStrategy = strategy.includes(num) && !isAnswer;
+                createTarget(num, isAnswer, isStrategy);
+            });
+        }
+
+        function updateTargets(deltaTime) {
+            STATE.targets.forEach(target => {
+                // Move
+                target.position.add(target.userData.velocity);
+
+                // Rotate
+                target.rotation.y += 0.01;
+
+                // Bounce off boundaries
+                if (Math.abs(target.position.x) > 12) {
+                    target.userData.velocity.x *= -1;
+                }
+                if (target.position.y > 6 || target.position.y < -4) {
+                    target.userData.velocity.y *= -1;
+                }
+
+                // Gentle bobbing
+                target.position.y += Math.sin(Date.now() * 0.001 + target.position.x) * 0.005;
+            });
+        }
+
+        // ============================================
+        // MEDIAPIPE HANDS SETUP
+        // ============================================
+        async function initMediaPipe() {
+            try {
+                STATE.videoElement = document.getElementById('hiddenVideo');
+
+                // Request camera
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'user',
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    }
+                });
+
+                STATE.videoElement.srcObject = stream;
+                await STATE.videoElement.play();
+
+                // Initialize MediaPipe Hands
+                STATE.hands = new Hands({
+                    locateFile: (file) => {
+                        return `https://unpkg.com/@mediapipe/hands@0.4.1646424915/${file}`;
+                    }
+                });
+
+                STATE.hands.setOptions({
+                    maxNumHands: 2,
+                    modelComplexity: 1,
+                    minDetectionConfidence: 0.7,
+                    minTrackingConfidence: 0.5
+                });
+
+                STATE.hands.onResults(onHandsResults);
+
+                // Wait for model to load
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                STATE.modelReady = true;
+
+            } catch (error) {
+                throw new Error(`Camera/MediaPipe initialization failed: ${error.message}`);
+            }
+        }
+
+        function onHandsResults(results) {
+            STATE.handsData = results.multiHandLandmarks || [];
+            STATE.lastLandmarks = results;
+        }
+
+        // ============================================
+        // HAND GESTURE FSM
+        // ============================================
+        const GESTURE_CONFIG = {
+            ARM_THRESHOLD: 0.08,
+            FIRE_THRESHOLD: 0.15,
+            V_MIN: 0.01,
+            COOLDOWN_MS: 300
+        };
+
+        function updateHandGestures(deltaTime) {
+            if (!STATE.handsData || STATE.handsData.length === 0) {
+                // Reset all hands to idle
+                STATE.handStates.forEach(s => s.state = 'idle');
+                STATE.lasers = [];
+                return;
+            }
+
+            STATE.handsData.forEach((landmarks, handIndex) => {
+                if (handIndex >= 2) return;
+
+                let handState = STATE.handStates[handIndex];
+                if (!handState.state) handState.state = 'idle';
+
+                // Extract key landmarks
+                const indexTip = landmarks[8];
+                const thumbTip = landmarks[4];
+                const indexMCP = landmarks[5];
+                const wrist = landmarks[0];
+
+                // Calculate distance and velocity
+                const distance = Math.sqrt(
+                    Math.pow(thumbTip.x - indexTip.x, 2) +
+                    Math.pow(thumbTip.y - indexTip.y, 2) +
+                    Math.pow(thumbTip.z - indexTip.z, 2)
+                );
+
+                const thumbSpeed = handState.lastThumbPos ?
+                    Math.sqrt(
+                        Math.pow(thumbTip.x - handState.lastThumbPos.x, 2) +
+                        Math.pow(thumbTip.y - handState.lastThumbPos.y, 2)
+                    ) : 0;
+
+                handState.lastThumbPos = { x: thumbTip.x, y: thumbTip.y, z: thumbTip.z };
+
+                // Calculate aim direction (from wrist through index finger)
+                const aimDir = new THREE.Vector3(
+                    indexTip.x - wrist.x,
+                    -(indexTip.y - wrist.y), // Flip Y for screen coords
+                    indexTip.z - wrist.z
+                ).normalize();
+
+                // Convert to world coordinates (flip for camera space)
+                const worldX = (indexTip.x - 0.5) * 30;
+                const worldY = -(indexTip.y - 0.5) * 20;
+                const worldZ = -10;
+
+                const startPos = new THREE.Vector3(worldX, worldY, worldZ);
+
+                // Update laser visualization
+                updateLaser(handIndex, startPos, aimDir);
+
+                // FSM state transitions
+                switch (handState.state) {
+                    case 'idle':
+                        if (landmarks && distance < GESTURE_CONFIG.ARM_THRESHOLD * 2) {
+                            handState.state = 'aiming';
+                        }
+                        break;
+
+                    case 'aiming':
+                        if (distance < GESTURE_CONFIG.ARM_THRESHOLD) {
+                            handState.state = 'armed';
+                            handState.armedTime = Date.now();
+                        } else if (!landmarks) {
+                            handState.state = 'idle';
+                        }
+                        break;
+
+                    case 'armed':
+                        if (distance > GESTURE_CONFIG.FIRE_THRESHOLD && thumbSpeed > GESTURE_CONFIG.V_MIN) {
+                            handState.state = 'fired';
+                            fireShot(startPos, aimDir, handIndex);
+                        } else if (Date.now() - handState.armedTime > 2000) {
+                            handState.state = 'aiming';
+                        }
+                        break;
+
+                    case 'fired':
+                        handState.state = 'cooldown';
+                        handState.cooldownStart = Date.now();
+                        break;
+
+                    case 'cooldown':
+                        if (Date.now() - handState.cooldownStart > GESTURE_CONFIG.COOLDOWN_MS) {
+                            handState.state = 'aiming';
+                        }
+                        break;
+                }
+            });
+        }
+
+        function updateLaser(handIndex, startPos, direction) {
+            // Remove old laser for this hand
+            const oldLaser = STATE.lasers[handIndex];
+            if (oldLaser) {
+                STATE.scene.remove(oldLaser);
+            }
+
+            // Create new laser beam
+            const geometry = new THREE.BufferGeometry();
+            const endPos = startPos.clone().add(direction.clone().multiplyScalar(50));
+
+            const positions = new Float32Array([
+                startPos.x, startPos.y, startPos.z,
+                endPos.x, endPos.y, endPos.z
+            ]);
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+            const material = new THREE.LineBasicMaterial({
+                color: handIndex === 0 ? 0xff0000 : 0x00ff00,
+                opacity: 0.6,
+                transparent: true
+            });
+
+            const laser = new THREE.Line(geometry, material);
+            STATE.scene.add(laser);
+            STATE.lasers[handIndex] = laser;
+        }
+
+        function fireShot(origin, direction, handIndex) {
+            playSFX('shoot');
+
+            // Create muzzle flash
+            createMuzzleFlash(origin);
+
+            // Raycast
+            const raycaster = new THREE.Raycaster(origin, direction);
+            const intersects = raycaster.intersectObjects(STATE.targets);
+
+            if (intersects.length > 0) {
+                const hit = intersects[0].object;
+                handleTargetHit(hit);
+            } else {
+                showFeedback('MISS', '#888888');
+                playSFX('miss');
+            }
+        }
+
+        function handleTargetHit(target) {
+            const { isAnswer, isStrategy, number } = target.userData;
+
+            // Remove target
+            STATE.scene.remove(target);
+            STATE.targets = STATE.targets.filter(t => t !== target);
+
+            // Create explosion
+            createExplosion(target.position, isAnswer ? 0x4CAF50 : isStrategy ? 0xFFEB3B : 0xff0000);
+
+            if (isAnswer) {
+                // Correct answer
+                STATE.score += 100;
+                STATE.streak++;
+
+                showFeedback('CORRECT! +100', '#4CAF50');
+                playSFX('correct');
+
+                nextQuestion();
+
+            } else if (isStrategy) {
+                // Strategy intermediate - smart bonus
+                STATE.score += 50;
+                STATE.streak++;
+
+                showFeedback('SMART! +50', '#FFD700');
+                playSFX('smart');
+
+                // Keep playing, remove this target
+
+            } else {
+                // Wrong answer
+                STATE.score = Math.max(0, STATE.score - 20);
+                STATE.streak = Math.max(0, STATE.streak - 1);
+
+                showFeedback('WRONG -20', '#ff0000');
+                playSFX('wrong');
+            }
+
+            updateHUD();
+        }
+
+        // ============================================
+        // VFX SYSTEM
+        // ============================================
+        function createMuzzleFlash(position) {
+            const geometry = new THREE.SphereGeometry(0.3, 8, 8);
+            const material = new THREE.MeshBasicMaterial({
+                color: 0xffff00,
+                transparent: true,
+                opacity: 1
+            });
+            const flash = new THREE.Mesh(geometry, material);
+            flash.position.copy(position);
+
+            STATE.scene.add(flash);
+
+            setTimeout(() => {
+                STATE.scene.remove(flash);
+            }, 100);
+        }
+
+        function createExplosion(position, color) {
+            const particleCount = 20;
+
+            for (let i = 0; i < particleCount; i++) {
+                const geometry = new THREE.SphereGeometry(0.1, 4, 4);
+                const material = new THREE.MeshBasicMaterial({ color });
+                const particle = new THREE.Mesh(geometry, material);
+
+                particle.position.copy(position);
+
+                const velocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.5,
+                    (Math.random() - 0.5) * 0.5,
+                    (Math.random() - 0.5) * 0.5
+                );
+
+                particle.userData = {
+                    velocity,
+                    life: 1.0
+                };
+
+                STATE.scene.add(particle);
+                STATE.particles.push(particle);
+            }
+        }
+
+        function updateParticles(deltaTime) {
+            STATE.particles = STATE.particles.filter(p => {
+                p.position.add(p.userData.velocity);
+                p.userData.velocity.y -= 0.01; // gravity
+                p.userData.life -= deltaTime * 2;
+
+                p.material.opacity = p.userData.life;
+
+                if (p.userData.life <= 0) {
+                    STATE.scene.remove(p);
+                    return false;
+                }
+                return true;
+            });
+        }
+
+        // ============================================
+        // UI SYSTEM
+        // ============================================
+        function showOverlay(id) {
+            document.querySelectorAll('.overlay').forEach(o => o.classList.add('hidden'));
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        function hideAllOverlays() {
+            document.querySelectorAll('.overlay').forEach(o => o.classList.add('hidden'));
+        }
+
+        function showFeedback(text, color) {
+            const existing = document.querySelector('.feedback');
+            if (existing) existing.remove();
+
+            const feedback = document.createElement('div');
+            feedback.className = 'feedback';
+            feedback.textContent = text;
+            feedback.style.color = color;
+            document.body.appendChild(feedback);
+
+            setTimeout(() => feedback.remove(), 600);
+        }
+
+        function updateHUD() {
+            document.getElementById('scoreDisplay').textContent = STATE.score;
+            document.getElementById('timeDisplay').textContent = Math.max(0, STATE.timeLeft);
+            document.getElementById('streakValue').textContent = STATE.streak;
+            document.getElementById('questionCount').textContent = STATE.questionIndex;
+
+            const streakDisplay = document.getElementById('streakDisplay');
+            if (STATE.streak >= 5) {
+                streakDisplay.classList.add('streak-display');
+            } else {
+                streakDisplay.classList.remove('streak-display');
+            }
+
+            if (STATE.currentQuestion) {
+                document.getElementById('questionDisplay').textContent = STATE.currentQuestion.question;
+            }
+        }
+
+        function nextQuestion() {
+            STATE.questionIndex++;
+
+            if (STATE.questionIndex >= 10) {
+                endRound();
+                return;
+            }
+
+            STATE.currentQuestion = generateQuestion();
+            spawnTargets();
+            updateHUD();
+        }
+
+        function endRound() {
+            STATE.isRunning = false;
+
+            // Save player score
+            const player = STATE.players[STATE.currentPlayerIndex] || {
+                name: `Player ${STATE.currentPlayerIndex + 1}`,
+                scores: []
+            };
+            player.scores.push(STATE.score);
+            STATE.players[STATE.currentPlayerIndex] = player;
+
+            // Show leaderboard
+            showLeaderboard();
+        }
+
+        function showLeaderboard() {
+            const leaderboard = document.getElementById('leaderboardDisplay');
+            leaderboard.innerHTML = '';
+
+            const sorted = [...STATE.players]
+                .map((p, i) => ({
+                    name: p.name,
+                    score: p.scores[p.scores.length - 1] || 0,
+                    index: i
+                }))
+                .sort((a, b) => b.score - a.score);
+
+            sorted.forEach((p, rank) => {
+                const entry = document.createElement('div');
+                entry.className = 'leaderboard-entry';
+                entry.innerHTML = `
+                    <span>${rank + 1}. ${p.name}</span>
+                    <span>${p.score} pts</span>
+                `;
+                leaderboard.appendChild(entry);
+            });
+
+            showOverlay('resultsOverlay');
+        }
+
+        // ============================================
+        // GAME LOOP
+        // ============================================
+        let lastTime = 0;
+
+        function gameLoop(timestamp) {
+            if (!STATE.isRunning) return;
+
+            const deltaTime = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+
+            // Update time
+            const elapsed = (timestamp - STATE.gameStartTime) / 1000;
+            STATE.timeLeft = Math.max(0, 60 - elapsed);
+
+            if (STATE.timeLeft <= 0 && STATE.questionIndex < 10) {
+                endRound();
+                return;
+            }
+
+            // Update game objects
+            updateTargets(deltaTime);
+            updateParticles(deltaTime);
+            updateHUD();
+
+            // Render
+            STATE.renderer.render(STATE.scene, STATE.camera);
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        async function detectionLoop() {
+            if (!STATE.isRunning || !STATE.modelReady) return;
+
+            const now = Date.now();
+
+            if (now - STATE.lastDetectionTime >= STATE.detectionInterval) {
+                try {
+                    await STATE.hands.send({ image: STATE.videoElement });
+                    updateHandGestures(STATE.detectionInterval / 1000);
+                    STATE.lastDetectionTime = now;
+                } catch (error) {
+                    console.error('Detection error:', error);
+                    showError('Hand tracking error. Please retry.');
+                    STATE.isRunning = false;
+                    return;
+                }
+            }
+
+            if (STATE.isRunning) {
+                setTimeout(detectionLoop, 16); // ~60 FPS check
+            }
+        }
+
+        // ============================================
+        // GAME LIFECYCLE
+        // ============================================
+        async function startGame() {
+            try {
+                showOverlay('loadingOverlay');
+
+                // Initialize systems
+                initAudio();
+                initThreeJS();
+                await initMediaPipe();
+
+                // Reset game state
+                STATE.score = 0;
+                STATE.streak = 0;
+                STATE.questionIndex = 0;
+                STATE.timeLeft = 60;
+                STATE.handStates = [{}, {}];
+
+                // Initialize players if needed
+                if (STATE.players.length === 0) {
+                    STATE.players = [{ name: 'Player 1', scores: [] }];
+                    STATE.currentPlayerIndex = 0;
+                }
+
+                // Start first question
+                STATE.currentQuestion = generateQuestion();
+                spawnTargets();
+
+                // Show HUD
+                document.getElementById('hud').classList.remove('hidden');
+                hideAllOverlays();
+                updateHUD();
+
+                // Start game loops
+                STATE.isRunning = true;
+                STATE.gameStartTime = performance.now();
+                lastTime = STATE.gameStartTime;
+
+                requestAnimationFrame(gameLoop);
+                detectionLoop();
+
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+
+        function retryGame() {
+            window.location.reload();
+        }
+
+        function nextRound() {
+            STATE.currentPlayerIndex = (STATE.currentPlayerIndex + 1) % STATE.players.length;
+
+            // If back to first player, could add new player option here
+
+            startGame();
+        }
+
+        function showError(message) {
+            document.getElementById('errorMessage').textContent = message;
+            showOverlay('errorOverlay');
+        }
+
+        // ============================================
+        // PAGE VISIBILITY HANDLING
+        // ============================================
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                STATE.isPaused = true;
+                if (STATE.audioContext) {
+                    STATE.audioContext.suspend();
+                }
+            } else {
+                STATE.isPaused = false;
+                if (STATE.audioContext) {
+                    STATE.audioContext.resume();
+                }
+            }
+        });
+
+        // ============================================
+        // INITIALIZATION
+        // ============================================
+        window.addEventListener('load', () => {
+            console.log('✅ Game loaded. Tap Start to begin!');
+        });
+
+        // Prevent bounce/scroll on mobile
+        document.body.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+
+    </script>
+</body>
+</html>
