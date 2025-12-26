@@ -412,7 +412,7 @@
 
             // Timing
             lastDetectionTime: 0,
-            detectionInterval: 1000 / 8, // 8 FPS - Optimized for mobile
+            detectionInterval: 1000 / 15, // 15 FPS - Faster response
             gameStartTime: 0,
             lastRenderTime: 0,
 
@@ -1052,14 +1052,14 @@
                 STATE.scene.remove(STATE.lasers[handIndex]);
             }
 
-            // Crosshair (circle) instead of line
+            // Crosshair (large circle for easy aiming)
             const targetPos = startPos.clone().add(direction.clone().multiplyScalar(15));
 
-            const geometry = new THREE.RingGeometry(0.3, 0.5, 16);
+            const geometry = new THREE.RingGeometry(0.9, 1.4, 24); // Larger ring
             const color = handIndex === 0 ? 0xff3333 : 0x33ff33;
             const material = new THREE.MeshBasicMaterial({
                 color,
-                opacity: 0.8,
+                opacity: 0.9,
                 transparent: true,
                 side: THREE.DoubleSide
             });
@@ -1068,8 +1068,8 @@
             crosshair.position.copy(targetPos);
             crosshair.lookAt(startPos);
 
-            // Add center dot
-            const dotGeometry = new THREE.CircleGeometry(0.1, 8);
+            // Add center dot (larger)
+            const dotGeometry = new THREE.CircleGeometry(0.35, 12);
             const dot = new THREE.Mesh(dotGeometry, material);
             dot.position.set(0, 0, 0.01);
             crosshair.add(dot);
