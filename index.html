@@ -598,10 +598,15 @@
         // THREE.JS SCENE SETUP (OPTIMIZED)
         // ============================================
         function initThreeJS() {
+            console.log('[Three.js] Initializing...');
             const canvas = document.getElementById('gameCanvas');
+            if (!canvas) {
+                throw new Error('Canvas element not found');
+            }
 
             STATE.scene = new THREE.Scene();
             STATE.scene.background = new THREE.Color(0x0a0a1a);
+            console.log('[Three.js] Scene created');
 
             STATE.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
             STATE.camera.position.set(0, 2, 15);
@@ -638,8 +643,10 @@
             };
 
             initObjectPools();
+            console.log('[Three.js] Object pools created');
             initCrosshair();
             preloadTextures();
+            console.log('[Three.js] Initialization complete');
 
             window.addEventListener('resize', onWindowResize);
         }
@@ -1215,10 +1222,17 @@
         // ============================================
         // GAME LOOP (OPTIMIZED)
         // ============================================
+        let frameCount = 0;
         function gameLoop(timestamp) {
             if (!STATE.isRunning || STATE.isPaused) {
                 if (STATE.isRunning) requestAnimationFrame(gameLoop);
                 return;
+            }
+
+            // Debug: log first few frames
+            if (frameCount < 3) {
+                console.log('[GameLoop] Frame', frameCount, 'targets:', STATE.targets.length);
+                frameCount++;
             }
 
             const deltaTime = Math.min((timestamp - STATE.lastRenderTime) / 1000, 0.1);
@@ -1238,7 +1252,10 @@
             interpolateCrosshair();
             updateHUD();
 
-            STATE.renderer.render(STATE.scene, STATE.camera);
+            // Render
+            if (STATE.renderer && STATE.scene && STATE.camera) {
+                STATE.renderer.render(STATE.scene, STATE.camera);
+            }
             requestAnimationFrame(gameLoop);
         }
 
@@ -1267,18 +1284,24 @@
         // ============================================
         async function startGame() {
             try {
+                console.log('[Game] Starting...');
+
+                // Initialize 3D scene first (always needed)
+                if (!STATE.scene) {
+                    console.log('[Game] Initializing Three.js...');
+                    initThreeJS();
+                }
+
+                // Show HUD and render first frame immediately
                 document.getElementById('hud').classList.remove('hidden');
                 hideAllOverlays();
 
-                if (!STATE.audioContext) await initAudio();
-                if (!STATE.scene) initThreeJS();
-                if (!STATE.modelReady) {
-                    showOverlay('loadingOverlay');
-                    await initMediaPipe();
-                    hideAllOverlays();
+                // Initialize audio (non-blocking)
+                if (!STATE.audioContext) {
+                    initAudio().catch(e => console.warn('Audio init failed:', e));
                 }
 
-                // Reset state
+                // Reset game state
                 STATE.questionIndex = 0;
                 STATE.timeLeft = CONFIG.TIME_LIMIT;
                 STATE.difficultyLevel = 1;
@@ -1291,19 +1314,37 @@
                 STATE.player.shots = 0;
                 STATE.player.hits = 0;
 
+                // Generate question and spawn targets
                 STATE.currentQuestion = generateQuestion();
+                console.log('[Game] Question:', STATE.currentQuestion);
                 spawnTargets();
                 updateHUD();
 
+                // Start game loop immediately (renders 3D scene)
                 STATE.isRunning = true;
                 STATE.isPaused = false;
                 STATE.gameStartTime = performance.now();
                 STATE.lastRenderTime = STATE.gameStartTime;
 
+                console.log('[Game] Starting game loop...');
                 requestAnimationFrame(gameLoop);
-                requestAnimationFrame(detectionLoop);
+
+                // Initialize MediaPipe in background (non-blocking)
+                if (!STATE.modelReady) {
+                    console.log('[Game] Initializing MediaPipe in background...');
+                    initMediaPipe().then(() => {
+                        console.log('[Game] MediaPipe ready, starting detection loop');
+                        requestAnimationFrame(detectionLoop);
+                    }).catch(error => {
+                        console.error('[Game] MediaPipe failed:', error);
+                        showStrategyHint('カメラを許可してください');
+                    });
+                } else {
+                    requestAnimationFrame(detectionLoop);
+                }
 
             } catch (error) {
+                console.error('[Game] Fatal error:', error);
                 document.getElementById('errorMessage').textContent = error.message;
                 showOverlay('errorOverlay');
             }
