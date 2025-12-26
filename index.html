@@ -1407,8 +1407,10 @@
             try {
                 STATE.gameMode = 'solo'; // SOLO ONLY
 
-                showOverlay('loadingOverlay');
-                updateLoadingProgress(0, 'Starting...');
+                // NO LOADING SCREEN - Initialize in background
+                // Show HUD immediately
+                document.getElementById('hud').classList.remove('hidden');
+                hideAllOverlays();
 
                 if (!STATE.audioContext) {
                     await initAudio();
@@ -1440,9 +1442,6 @@
 
                 STATE.currentQuestion = generateQuestion();
                 spawnTargets();
-
-                document.getElementById('hud').classList.remove('hidden');
-                hideAllOverlays();
                 updateHUD();
 
                 STATE.isRunning = true;
