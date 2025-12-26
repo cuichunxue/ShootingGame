@@ -804,10 +804,11 @@
         }
 
         function spawnTargets() {
-            // Release old targets
+            // Release old targets (preserve sprite reference)
             STATE.targets.forEach(t => {
                 t.visible = false;
-                t.userData = {};
+                const sprite = t.userData.sprite;
+                t.userData = { sprite };  // Keep sprite reference
             });
             STATE.targets = [];
 
@@ -826,7 +827,7 @@
             const time = performance.now() * 0.001;
 
             STATE.targets.forEach(target => {
-                if (!target.visible) return;
+                if (!target.visible || !target.userData.velocity) return;
 
                 target.position.add(target.userData.velocity);
                 target.rotation.y += 0.012;
@@ -966,24 +967,29 @@
             STATE.player.shots++;
 
             // Create muzzle flash
-            const flash = getParticle();
-            if (flash) {
-                flash.position.copy(STATE.crosshair.position);
-                flash.scale.setScalar(0.4);
-                flash.material.color.setHex(0xffff00);
-                flash.visible = true;
-                setTimeout(() => { flash.visible = false; }, 60);
+            if (STATE.crosshair && STATE.crosshair.visible) {
+                const flash = getParticle();
+                if (flash) {
+                    flash.position.copy(STATE.crosshair.position);
+                    flash.scale.setScalar(0.4);
+                    flash.material.color.setHex(0xffff00);
+                    flash.visible = true;
+                    setTimeout(() => { flash.visible = false; }, 60);
+                }
             }
 
-            // Raycast from camera to crosshair
+            // Raycast from camera through crosshair position
             const raycaster = new THREE.Raycaster();
-            raycaster.setFromCamera(
-                new THREE.Vector2(
-                    (STATE.crosshairCurrentPos.x / 15),
-                    (STATE.crosshairCurrentPos.y / 11)
-                ),
-                STATE.camera
+
+            // Convert world position to NDC (-1 to 1)
+            const crosshairWorld = new THREE.Vector3(
+                STATE.crosshairCurrentPos.x,
+                STATE.crosshairCurrentPos.y,
+                STATE.crosshairCurrentPos.z
             );
+            const ndc = crosshairWorld.clone().project(STATE.camera);
+
+            raycaster.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), STATE.camera);
 
             const intersects = raycaster.intersectObjects(STATE.targets.filter(t => t.visible));
 
