@@ -512,14 +512,78 @@
         let eventTimer = 0;
 
         // ============================================
-        // MATH QUESTION GENERATOR (EXPANDED)
+        // ADAPTIVE SKILL SYSTEM
+        // ============================================
+        // Track skill per category (0-10 scale)
+        const SKILL_CATEGORIES = {
+            addition: { level: 1, correct: 0, total: 0 },
+            subtraction: { level: 1, correct: 0, total: 0 },
+            multiplication: { level: 1, correct: 0, total: 0 },
+            division: { level: 1, correct: 0, total: 0 },
+            units: { level: 1, correct: 0, total: 0 }
+        };
+
+        // Get category from question type
+        function getCategory(type) {
+            if (type.includes('addition')) return 'addition';
+            if (type.includes('subtraction')) return 'subtraction';
+            if (type.includes('multiplication') || type.includes('square') || type.includes('double')) return 'multiplication';
+            if (type.includes('division')) return 'division';
+            if (type.includes('volume') || type.includes('length') || type.includes('weight')) return 'units';
+            return 'addition';  // default
+        }
+
+        // Update skill after answering
+        function updateSkill(questionType, isCorrect) {
+            const cat = getCategory(questionType);
+            const skill = SKILL_CATEGORIES[cat];
+            skill.total++;
+            if (isCorrect) skill.correct++;
+
+            // Adjust level based on recent performance (every 3 questions)
+            if (skill.total % 3 === 0) {
+                const recentRate = skill.correct / skill.total;
+                if (recentRate >= 0.8 && skill.level < 10) {
+                    skill.level++;
+                    showFeedback(`📈 ${cat} Level UP!`, '#00ff00');
+                } else if (recentRate < 0.4 && skill.level > 1) {
+                    skill.level--;
+                }
+                // Reset counters for fresh tracking
+                skill.correct = 0;
+                skill.total = 0;
+            }
+
+            // Save to localStorage
+            try {
+                localStorage.setItem('mathSkills', JSON.stringify(SKILL_CATEGORIES));
+            } catch (e) {}
+        }
+
+        // Load saved skills
+        function loadSkills() {
+            try {
+                const saved = localStorage.getItem('mathSkills');
+                if (saved) {
+                    const data = JSON.parse(saved);
+                    Object.keys(data).forEach(cat => {
+                        if (SKILL_CATEGORIES[cat]) {
+                            SKILL_CATEGORIES[cat].level = data[cat].level || 1;
+                        }
+                    });
+                }
+            } catch (e) {}
+        }
+
+        // ============================================
+        // MATH QUESTION GENERATOR (ADAPTIVE)
         // ============================================
         const QUESTION_TEMPLATES = [
-            // === LEVEL 1: Basic Addition ===
+            // === ADDITION (skill levels 1-10) ===
             {
                 type: 'addition_simple',
-                difficulty: 1,
-                hint: '足し算！',
+                category: 'addition',
+                skillLevel: 1,  // For beginners
                 generate: () => {
                     const a = 2 + Math.floor(Math.random() * 8);
                     const b = 2 + Math.floor(Math.random() * 8);
@@ -528,8 +592,8 @@
             },
             {
                 type: 'addition_make10',
-                difficulty: 1,
-                hint: '10を作ろう！',
+                category: 'addition',
+                skillLevel: 2,
                 generate: () => {
                     const a = 7 + Math.floor(Math.random() * 3);
                     const toTen = 10 - a;
@@ -538,11 +602,62 @@
                     return { question: `${a} + ${b}`, answer: a + b, strategy: [10], hint: `${a}+${toTen}=10` };
                 }
             },
-            // === LEVEL 2: Subtraction ===
+            {
+                type: 'addition_2digit_1digit',
+                category: 'addition',
+                skillLevel: 3,  // Intermediate
+                generate: () => {
+                    const a = 10 + Math.floor(Math.random() * 40);
+                    const b = 2 + Math.floor(Math.random() * 8);
+                    return { question: `${a} + ${b}`, answer: a + b, strategy: [], hint: '' };
+                }
+            },
+            {
+                type: 'addition_2digit',
+                category: 'addition',
+                skillLevel: 5,  // Advanced
+                generate: () => {
+                    const a = 10 + Math.floor(Math.random() * 40);
+                    const b = 10 + Math.floor(Math.random() * 40);
+                    return { question: `${a} + ${b}`, answer: a + b, strategy: [], hint: '' };
+                }
+            },
+            {
+                type: 'addition_2digit_carry',
+                category: 'addition',
+                skillLevel: 6,  // Expert
+                generate: () => {
+                    const a = 15 + Math.floor(Math.random() * 30);
+                    const b = 15 + Math.floor(Math.random() * 30);
+                    return { question: `${a} + ${b}`, answer: a + b, strategy: [], hint: '繰り上がり注意！' };
+                }
+            },
+            {
+                type: 'addition_3numbers',
+                category: 'addition',
+                skillLevel: 7,
+                generate: () => {
+                    const a = 5 + Math.floor(Math.random() * 15);
+                    const b = 5 + Math.floor(Math.random() * 15);
+                    const c = 5 + Math.floor(Math.random() * 15);
+                    return { question: `${a} + ${b} + ${c}`, answer: a + b + c, strategy: [a + b], hint: '' };
+                }
+            },
+            {
+                type: 'addition_3digit',
+                category: 'addition',
+                skillLevel: 9,  // Master
+                generate: () => {
+                    const a = 100 + Math.floor(Math.random() * 400);
+                    const b = 100 + Math.floor(Math.random() * 400);
+                    return { question: `${a} + ${b}`, answer: a + b, strategy: [], hint: '' };
+                }
+            },
+            // === SUBTRACTION (skill levels 1-10) ===
             {
                 type: 'subtraction_simple',
-                difficulty: 2,
-                hint: '引き算！',
+                category: 'subtraction',
+                skillLevel: 1,
                 generate: () => {
                     const answer = 2 + Math.floor(Math.random() * 10);
                     const a = answer + 3 + Math.floor(Math.random() * 10);
@@ -551,8 +666,8 @@
             },
             {
                 type: 'subtraction_countup',
-                difficulty: 2,
-                hint: '差を数えよう！',
+                category: 'subtraction',
+                skillLevel: 2,
                 generate: () => {
                     const answer = 3 + Math.floor(Math.random() * 8);
                     const a = 10 + Math.floor(Math.random() * 10);
@@ -560,11 +675,42 @@
                     return { question: `${a} − ${b}`, answer, strategy: [answer], hint: `${b}→${a}` };
                 }
             },
-            // === LEVEL 3: Multiplication Basics ===
+            {
+                type: 'subtraction_2digit',
+                category: 'subtraction',
+                skillLevel: 4,
+                generate: () => {
+                    const a = 30 + Math.floor(Math.random() * 50);
+                    const b = 10 + Math.floor(Math.random() * (a - 10));
+                    return { question: `${a} − ${b}`, answer: a - b, strategy: [], hint: '' };
+                }
+            },
+            {
+                type: 'subtraction_borrow',
+                category: 'subtraction',
+                skillLevel: 6,
+                generate: () => {
+                    const a = 40 + Math.floor(Math.random() * 40);
+                    const ones = (a % 10) + 5;
+                    const b = 10 + ones;
+                    return { question: `${a} − ${b}`, answer: a - b, strategy: [], hint: '繰り下がり！' };
+                }
+            },
+            {
+                type: 'subtraction_3digit',
+                category: 'subtraction',
+                skillLevel: 8,
+                generate: () => {
+                    const a = 200 + Math.floor(Math.random() * 500);
+                    const b = 100 + Math.floor(Math.random() * (a - 100));
+                    return { question: `${a} − ${b}`, answer: a - b, strategy: [], hint: '' };
+                }
+            },
+            // === MULTIPLICATION (skill levels 1-10) ===
             {
                 type: 'multiplication_simple',
-                difficulty: 3,
-                hint: '掛け算！',
+                category: 'multiplication',
+                skillLevel: 1,
                 generate: () => {
                     const a = 2 + Math.floor(Math.random() * 5);
                     const b = 2 + Math.floor(Math.random() * 5);
@@ -573,8 +719,8 @@
             },
             {
                 type: 'multiplication_5x',
-                difficulty: 3,
-                hint: '5の段！半分にして10倍',
+                category: 'multiplication',
+                skillLevel: 2,
                 generate: () => {
                     const b = 2 + Math.floor(Math.random() * 8);
                     return { question: `5 × ${b}`, answer: 5 * b, strategy: [b * 10 / 2], hint: `${b}÷2×10` };
@@ -582,18 +728,17 @@
             },
             {
                 type: 'multiplication_9x',
-                difficulty: 3,
-                hint: '9の魔法！10倍して引く',
+                category: 'multiplication',
+                skillLevel: 3,
                 generate: () => {
                     const b = 2 + Math.floor(Math.random() * 8);
                     return { question: `9 × ${b}`, answer: 9 * b, strategy: [10 * b], hint: `10×${b}−${b}` };
                 }
             },
-            // === LEVEL 4: Advanced Multiplication ===
             {
                 type: 'multiplication_decompose',
-                difficulty: 4,
-                hint: '分解して計算！',
+                category: 'multiplication',
+                skillLevel: 4,
                 generate: () => {
                     const a = 6 + Math.floor(Math.random() * 4);
                     const b = 4 + Math.floor(Math.random() * 4);
@@ -602,19 +747,57 @@
             },
             {
                 type: 'inverse_multiplication',
-                difficulty: 4,
-                hint: '？を探そう！',
+                category: 'multiplication',
+                skillLevel: 5,
                 generate: () => {
                     const a = 3 + Math.floor(Math.random() * 6);
                     const answer = 2 + Math.floor(Math.random() * 8);
                     return { question: `${a} × ? = ${a * answer}`, answer, strategy: [], hint: `${a * answer}÷${a}` };
                 }
             },
-            // === LEVEL 5: Division ===
+            {
+                type: 'square_numbers',
+                category: 'multiplication',
+                skillLevel: 6,
+                generate: () => {
+                    const a = 2 + Math.floor(Math.random() * 9);
+                    return { question: `${a} × ${a}`, answer: a * a, strategy: [], hint: `${a}²` };
+                }
+            },
+            {
+                type: 'multiplication_2digit',
+                category: 'multiplication',
+                skillLevel: 7,
+                generate: () => {
+                    const a = 11 + Math.floor(Math.random() * 9);
+                    const b = 2 + Math.floor(Math.random() * 5);
+                    return { question: `${a} × ${b}`, answer: a * b, strategy: [10 * b, (a-10) * b], hint: '' };
+                }
+            },
+            {
+                type: 'multiplication_11x',
+                category: 'multiplication',
+                skillLevel: 8,
+                generate: () => {
+                    const b = 10 + Math.floor(Math.random() * 9);
+                    return { question: `11 × ${b}`, answer: 11 * b, strategy: [], hint: '' };
+                }
+            },
+            {
+                type: 'multiplication_large',
+                category: 'multiplication',
+                skillLevel: 10,
+                generate: () => {
+                    const a = 12 + Math.floor(Math.random() * 8);
+                    const b = 12 + Math.floor(Math.random() * 8);
+                    return { question: `${a} × ${b}`, answer: a * b, strategy: [], hint: '' };
+                }
+            },
+            // === DIVISION (skill levels 1-10) ===
             {
                 type: 'division_simple',
-                difficulty: 5,
-                hint: '割り算！',
+                category: 'division',
+                skillLevel: 1,
                 generate: () => {
                     const answer = 2 + Math.floor(Math.random() * 9);
                     const b = 2 + Math.floor(Math.random() * 5);
@@ -623,64 +806,39 @@
                 }
             },
             {
-                type: 'division_remainder',
-                difficulty: 5,
-                hint: '余りなし！',
+                type: 'division_by10',
+                category: 'division',
+                skillLevel: 2,
                 generate: () => {
-                    const answer = 3 + Math.floor(Math.random() * 7);
-                    const b = 3 + Math.floor(Math.random() * 4);
+                    const answer = 2 + Math.floor(Math.random() * 15);
+                    return { question: `${answer * 10} ÷ 10`, answer, strategy: [], hint: '' };
+                }
+            },
+            {
+                type: 'division_2digit',
+                category: 'division',
+                skillLevel: 4,
+                generate: () => {
+                    const answer = 5 + Math.floor(Math.random() * 10);
+                    const b = 3 + Math.floor(Math.random() * 6);
                     return { question: `${answer * b} ÷ ${b}`, answer, strategy: [], hint: `${b}×?=${answer*b}` };
                 }
             },
-            // === LEVEL 6: Mixed Operations ===
             {
-                type: 'mixed_add_mult',
-                difficulty: 6,
-                hint: '掛け算を先に！',
+                type: 'division_large',
+                category: 'division',
+                skillLevel: 7,
                 generate: () => {
-                    const a = 2 + Math.floor(Math.random() * 5);
-                    const b = 2 + Math.floor(Math.random() * 4);
-                    const c = 5 + Math.floor(Math.random() * 10);
-                    return { question: `${a} × ${b} + ${c}`, answer: a * b + c, strategy: [a * b], hint: `${a}×${b}=${a*b}` };
-                }
-            },
-            {
-                type: 'mixed_sub_mult',
-                difficulty: 6,
-                hint: '順番に注意！',
-                generate: () => {
-                    const a = 3 + Math.floor(Math.random() * 4);
-                    const b = 2 + Math.floor(Math.random() * 4);
-                    const c = 2 + Math.floor(Math.random() * 5);
-                    const product = a * b;
-                    return { question: `${product + c} − ${a} × ${b}`, answer: c, strategy: [product], hint: `${a}×${b}=${product}` };
-                }
-            },
-            // === LEVEL 7: Squares & Patterns ===
-            {
-                type: 'square_numbers',
-                difficulty: 7,
-                hint: '同じ数同士！',
-                generate: () => {
-                    const a = 2 + Math.floor(Math.random() * 9);
-                    return { question: `${a} × ${a}`, answer: a * a, strategy: [], hint: `${a}²` };
-                }
-            },
-            {
-                type: 'double_half',
-                difficulty: 7,
-                hint: '2倍して半分！',
-                generate: () => {
-                    const a = 4 + Math.floor(Math.random() * 6);
-                    const b = 5 + Math.floor(Math.random() * 5);
-                    return { question: `${a} × ${b * 2}`, answer: a * b * 2, strategy: [a * 2, b], hint: `${a*2}×${b}` };
+                    const answer = 10 + Math.floor(Math.random() * 15);
+                    const b = 4 + Math.floor(Math.random() * 6);
+                    return { question: `${answer * b} ÷ ${b}`, answer, strategy: [], hint: '' };
                 }
             },
             // === UNIT CONVERSIONS - Volume (L, dL, mL) ===
             {
                 type: 'volume_L_to_dL',
-                difficulty: 2,
-                hint: '1L = 10dL',
+                category: 'units',
+                skillLevel: 1,
                 generate: () => {
                     const L = 1 + Math.floor(Math.random() * 5);
                     return { question: `${L}L = ?dL`, answer: L * 10, strategy: [10], hint: '1L=10dL' };
@@ -688,8 +846,8 @@
             },
             {
                 type: 'volume_L_to_mL',
-                difficulty: 3,
-                hint: '1L = 1000mL',
+                category: 'units',
+                skillLevel: 3,
                 generate: () => {
                     const L = 1 + Math.floor(Math.random() * 3);
                     return { question: `${L}L = ?mL`, answer: L * 1000, strategy: [1000], hint: '1L=1000mL' };
@@ -697,8 +855,8 @@
             },
             {
                 type: 'volume_dL_to_mL',
-                difficulty: 3,
-                hint: '1dL = 100mL',
+                category: 'units',
+                skillLevel: 2,
                 generate: () => {
                     const dL = 1 + Math.floor(Math.random() * 9);
                     return { question: `${dL}dL = ?mL`, answer: dL * 100, strategy: [100], hint: '1dL=100mL' };
@@ -706,8 +864,8 @@
             },
             {
                 type: 'volume_mL_to_dL',
-                difficulty: 4,
-                hint: '100mL = 1dL',
+                category: 'units',
+                skillLevel: 4,
                 generate: () => {
                     const dL = 2 + Math.floor(Math.random() * 8);
                     return { question: `${dL * 100}mL = ?dL`, answer: dL, strategy: [], hint: '÷100' };
@@ -716,8 +874,8 @@
             // === UNIT CONVERSIONS - Length (m, cm, mm) ===
             {
                 type: 'length_m_to_cm',
-                difficulty: 2,
-                hint: '1m = 100cm',
+                category: 'units',
+                skillLevel: 1,
                 generate: () => {
                     const m = 1 + Math.floor(Math.random() * 5);
                     return { question: `${m}m = ?cm`, answer: m * 100, strategy: [100], hint: '1m=100cm' };
@@ -725,8 +883,8 @@
             },
             {
                 type: 'length_cm_to_mm',
-                difficulty: 2,
-                hint: '1cm = 10mm',
+                category: 'units',
+                skillLevel: 1,
                 generate: () => {
                     const cm = 1 + Math.floor(Math.random() * 20);
                     return { question: `${cm}cm = ?mm`, answer: cm * 10, strategy: [10], hint: '1cm=10mm' };
@@ -734,8 +892,8 @@
             },
             {
                 type: 'length_m_to_mm',
-                difficulty: 4,
-                hint: '1m = 1000mm',
+                category: 'units',
+                skillLevel: 5,
                 generate: () => {
                     const m = 1 + Math.floor(Math.random() * 3);
                     return { question: `${m}m = ?mm`, answer: m * 1000, strategy: [1000], hint: '1m=1000mm' };
@@ -743,8 +901,8 @@
             },
             {
                 type: 'length_cm_to_m',
-                difficulty: 4,
-                hint: '100cm = 1m',
+                category: 'units',
+                skillLevel: 4,
                 generate: () => {
                     const m = 1 + Math.floor(Math.random() * 5);
                     return { question: `${m * 100}cm = ?m`, answer: m, strategy: [], hint: '÷100' };
@@ -752,8 +910,8 @@
             },
             {
                 type: 'length_mm_to_cm',
-                difficulty: 3,
-                hint: '10mm = 1cm',
+                category: 'units',
+                skillLevel: 3,
                 generate: () => {
                     const cm = 2 + Math.floor(Math.random() * 15);
                     return { question: `${cm * 10}mm = ?cm`, answer: cm, strategy: [], hint: '÷10' };
@@ -762,8 +920,8 @@
             // === UNIT CONVERSIONS - Weight (kg, g) ===
             {
                 type: 'weight_kg_to_g',
-                difficulty: 3,
-                hint: '1kg = 1000g',
+                category: 'units',
+                skillLevel: 2,
                 generate: () => {
                     const kg = 1 + Math.floor(Math.random() * 5);
                     return { question: `${kg}kg = ?g`, answer: kg * 1000, strategy: [1000], hint: '1kg=1000g' };
@@ -771,8 +929,8 @@
             },
             {
                 type: 'weight_g_to_kg',
-                difficulty: 5,
-                hint: '1000g = 1kg',
+                category: 'units',
+                skillLevel: 5,
                 generate: () => {
                     const kg = 1 + Math.floor(Math.random() * 5);
                     return { question: `${kg * 1000}g = ?kg`, answer: kg, strategy: [], hint: '÷1000' };
@@ -780,8 +938,8 @@
             },
             {
                 type: 'weight_mixed',
-                difficulty: 5,
-                hint: 'kg + g を g に！',
+                category: 'units',
+                skillLevel: 6,
                 generate: () => {
                     const kg = 1 + Math.floor(Math.random() * 3);
                     const g = 100 + Math.floor(Math.random() * 9) * 100;
@@ -791,9 +949,36 @@
         ];
 
         function generateQuestion() {
-            const available = QUESTION_TEMPLATES.filter(t => t.difficulty <= STATE.difficultyLevel);
-            const template = available[Math.floor(Math.random() * available.length)];
+            // Pick a random category, then select question based on skill level
+            const categories = Object.keys(SKILL_CATEGORIES);
+            const category = categories[Math.floor(Math.random() * categories.length)];
+            const skillLevel = SKILL_CATEGORIES[category].level;
+
+            // Find questions matching this category and appropriate skill level
+            // Allow questions within ±2 of player's skill level
+            let available = QUESTION_TEMPLATES.filter(t =>
+                t.category === category &&
+                t.skillLevel <= skillLevel + 1 &&
+                t.skillLevel >= Math.max(1, skillLevel - 2)
+            );
+
+            // Fallback: if no matching questions, use any question at appropriate level
+            if (available.length === 0) {
+                available = QUESTION_TEMPLATES.filter(t =>
+                    t.skillLevel <= Math.max(...Object.values(SKILL_CATEGORIES).map(s => s.level)) + 1
+                );
+            }
+
+            // Prefer questions at or slightly above skill level (challenge!)
+            const weighted = available.flatMap(t => {
+                if (t.skillLevel === skillLevel) return [t, t, t];  // 3x weight for matching
+                if (t.skillLevel === skillLevel + 1) return [t, t]; // 2x weight for challenge
+                return [t];
+            });
+
+            const template = weighted[Math.floor(Math.random() * weighted.length)];
             const q = template.generate();
+            q.questionType = template.type;  // Track type for skill update
 
             const distractors = new Set();
 
@@ -2040,6 +2225,11 @@
             createExplosion(hitPosition, isAnswer ? 0x4CAF50 : isStrategy ? 0xFFD700 : 0xff4444);
 
             if (isAnswer) {
+                // Update skill - correct answer!
+                if (STATE.currentQuestion && STATE.currentQuestion.questionType) {
+                    updateSkill(STATE.currentQuestion.questionType, true);
+                }
+
                 const points = Math.floor(CONFIG.SCORE_CORRECT * multiplier);
                 STATE.player.score += points;
                 STATE.player.streak++;
@@ -2094,6 +2284,11 @@
                 }
 
             } else {
+                // Update skill - wrong answer
+                if (STATE.currentQuestion && STATE.currentQuestion.questionType) {
+                    updateSkill(STATE.currentQuestion.questionType, false);
+                }
+
                 STATE.player.score = Math.max(0, STATE.player.score - CONFIG.PENALTY_WRONG);
                 STATE.player.streak = Math.max(0, STATE.player.streak - 1);
 
@@ -2822,6 +3017,9 @@
         async function startGame() {
             try {
                 console.log('[Game] Starting...');
+
+                // Load saved skills
+                loadSkills();
 
                 // Initialize 3D scene first (always needed)
                 if (!STATE.scene) {
