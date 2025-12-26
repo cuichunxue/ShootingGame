@@ -465,7 +465,7 @@
             GESTURE: {
                 EXTEND_THRESHOLD: 0.08,
                 CURL_THRESHOLD: 0.05,
-                COOLDOWN_MS: 300
+                COOLDOWN_MS: 450  // Increased cooldown between shots
             },
             MAX_TARGETS: 5,
             TARGET_POOL_SIZE: 8,
@@ -1378,7 +1378,7 @@
         // ============================================
         let prevIndexY = 0.5;
         let flickVelocity = 0;
-        const FLICK_THRESHOLD = 0.025;  // How fast the upward movement needs to be
+        const FLICK_THRESHOLD = 0.045;  // How fast the upward movement needs to be (higher = less sensitive)
 
         function updateHandGestures() {
             const now = performance.now();
