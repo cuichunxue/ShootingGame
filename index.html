@@ -915,7 +915,7 @@
 
                 updateLoadingProgress(80, 'Initializing model...');
 
-                await new Promise(resolve => setTimeout(resolve, 1500));
+                await new Promise(resolve => setTimeout(resolve, 500));
 
                 updateLoadingProgress(100, 'Ready!');
 
@@ -1003,7 +1003,8 @@
                     indexTip.z - wrist.z
                 ).normalize();
 
-                const worldX = (indexTip.x - 0.5) * 35;
+                // Mirror mode - flip X for natural movement
+                const worldX = -(indexTip.x - 0.5) * 35;
                 const worldY = -(indexTip.y - 0.5) * 25;
                 const worldZ = -8;
 
@@ -1057,26 +1058,30 @@
                 STATE.scene.remove(STATE.lasers[handIndex]);
             }
 
-            const geometry = new THREE.BufferGeometry();
-            const endPos = startPos.clone().add(direction.clone().multiplyScalar(60));
+            // Crosshair (circle) instead of line
+            const targetPos = startPos.clone().add(direction.clone().multiplyScalar(15));
 
-            const positions = new Float32Array([
-                startPos.x, startPos.y, startPos.z,
-                endPos.x, endPos.y, endPos.z
-            ]);
-
-            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
+            const geometry = new THREE.RingGeometry(0.3, 0.5, 16);
             const color = handIndex === 0 ? 0xff3333 : 0x33ff33;
-            const material = new THREE.LineBasicMaterial({
+            const material = new THREE.MeshBasicMaterial({
                 color,
                 opacity: 0.8,
-                transparent: true
+                transparent: true,
+                side: THREE.DoubleSide
             });
 
-            const laser = new THREE.Line(geometry, material);
-            STATE.scene.add(laser);
-            STATE.lasers[handIndex] = laser;
+            const crosshair = new THREE.Mesh(geometry, material);
+            crosshair.position.copy(targetPos);
+            crosshair.lookAt(startPos);
+
+            // Add center dot
+            const dotGeometry = new THREE.CircleGeometry(0.1, 8);
+            const dot = new THREE.Mesh(dotGeometry, material);
+            dot.position.set(0, 0, 0.01);
+            crosshair.add(dot);
+
+            STATE.scene.add(crosshair);
+            STATE.lasers[handIndex] = crosshair;
         }
 
         function fireShot(origin, direction, handIndex) {
@@ -1425,7 +1430,7 @@
                 }
 
                 updateLoadingProgress(100, 'Ready!');
-                await new Promise(resolve => setTimeout(resolve, 500));
+                await new Promise(resolve => setTimeout(resolve, 200));
 
                 // Reset
                 STATE.questionIndex = 0;
