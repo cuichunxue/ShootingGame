@@ -635,9 +635,25 @@
             return buffer;
         }
 
+        // Ensure audio is ready before playing
+        async function ensureAudioReady() {
+            if (!STATE.audioContext) {
+                await initAudio();
+            }
+            if (STATE.audioContext && STATE.audioContext.state === 'suspended') {
+                try {
+                    await STATE.audioContext.resume();
+                    console.log('[Audio] Resumed context for playback');
+                } catch (e) {
+                    console.warn('[Audio] Failed to resume:', e);
+                }
+            }
+            return STATE.audioContext && STATE.audioContext.state === 'running';
+        }
+
         // Realistic gun shot sound
         function playShootSound() {
-            if (!STATE.audioContext || !STATE.audioReady) return;
+            if (!STATE.audioContext) return;
 
             const now = STATE.audioContext.currentTime;
 
@@ -687,7 +703,7 @@
 
         // Explosion sound (balloon pop)
         function playExplosionSound(isCorrect) {
-            if (!STATE.audioContext || !STATE.audioReady) return;
+            if (!STATE.audioContext) return;
 
             const now = STATE.audioContext.currentTime;
 
@@ -725,7 +741,7 @@
 
         // Correct answer celebration sound
         function playCorrectSound() {
-            if (!STATE.audioContext || !STATE.audioReady) return;
+            if (!STATE.audioContext) return;
 
             const now = STATE.audioContext.currentTime;
             const notes = [523, 659, 784, 1047]; // C5, E5, G5, C6
@@ -748,7 +764,7 @@
 
         // Smart hit sound (golden)
         function playSmartSound() {
-            if (!STATE.audioContext || !STATE.audioReady) return;
+            if (!STATE.audioContext) return;
 
             const now = STATE.audioContext.currentTime;
             const notes = [659, 784, 880]; // E5, G5, A5
@@ -786,7 +802,7 @@
 
         // Wrong answer sound
         function playWrongSound() {
-            if (!STATE.audioContext || !STATE.audioReady) return;
+            if (!STATE.audioContext) return;
 
             const now = STATE.audioContext.currentTime;
 
@@ -818,7 +834,7 @@
 
         // Miss sound (whoosh)
         function playMissSound() {
-            if (!STATE.audioContext || !STATE.audioReady) return;
+            if (!STATE.audioContext) return;
 
             const now = STATE.audioContext.currentTime;
 
@@ -844,7 +860,7 @@
 
         // Combo sound (increasing excitement)
         function playComboSound(streak) {
-            if (!STATE.audioContext || !STATE.audioReady) return;
+            if (!STATE.audioContext) return;
             if (streak < 2) return;
 
             const now = STATE.audioContext.currentTime;
@@ -885,7 +901,7 @@
 
         // Level up fanfare
         function playLevelUpSound() {
-            if (!STATE.audioContext || !STATE.audioReady) return;
+            if (!STATE.audioContext) return;
 
             const now = STATE.audioContext.currentTime;
             const notes = [523, 659, 784, 1047, 1319]; // C5, E5, G5, C6, E6
@@ -923,6 +939,26 @@
 
         // Legacy playSFX wrapper for compatibility
         function playSFX(type) {
+            // Create audio context synchronously within user gesture
+            if (!STATE.audioContext) {
+                try {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    STATE.audioContext = new AudioContext();
+                    STATE.audioReady = true;
+                    console.log('[Audio] Created context in user gesture, state:', STATE.audioContext.state);
+                } catch (e) {
+                    console.warn('[Audio] Failed to create context:', e);
+                    return;
+                }
+            }
+
+            // Resume if suspended (must be within user gesture)
+            if (STATE.audioContext.state === 'suspended') {
+                STATE.audioContext.resume().then(() => {
+                    console.log('[Audio] Context resumed, state:', STATE.audioContext.state);
+                });
+            }
+
             switch(type) {
                 case 'shoot':
                     playShootSound();
@@ -1477,26 +1513,26 @@
                 }
             }
 
-            // Movement classification
-            const SMALL_MOVE = 0.3;   // Small threshold - quick response
-            const LARGE_MOVE = 1.5;   // Large move always accepted
+            // Movement classification - MORE RESPONSIVE
+            const SMALL_MOVE = 0.2;   // Lower threshold for quicker response
+            const LARGE_MOVE = 1.0;   // Lower threshold for fast response
 
             let worldX = smoothedX;
             let worldY = smoothedY;
             let moveSpeed = 0;
 
             if (distance > LARGE_MOVE) {
-                // Large movement: always follow quickly
-                moveSpeed = 0.6;
+                // Large movement: follow very quickly
+                moveSpeed = 0.8;
             } else if (distance > SMALL_MOVE && isConsistentMove) {
-                // Consistent directional movement: follow at medium speed
-                moveSpeed = 0.4;
+                // Consistent directional movement: follow quickly
+                moveSpeed = 0.6;
             } else if (distance > SMALL_MOVE) {
-                // Movement but erratic: follow slowly (might be tremor)
-                moveSpeed = 0.15;
+                // Movement but erratic: follow at medium speed
+                moveSpeed = 0.3;
             } else {
-                // Very small movement: minimal response (tremor rejection)
-                moveSpeed = 0.05;
+                // Very small movement: slow response (tremor rejection)
+                moveSpeed = 0.1;
             }
 
             // Apply movement
