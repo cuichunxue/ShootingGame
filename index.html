@@ -475,7 +475,7 @@
             SCORE_CORRECT: 100,
             SCORE_SMART: 50,
             PENALTY_WRONG: 20,
-            CROSSHAIR_LERP: 0.25, // Smooth crosshair movement
+            CROSSHAIR_LERP: 0.5, // Faster crosshair movement (was 0.25)
             DETECTION_FPS: 25
         };
 
@@ -1378,7 +1378,12 @@
         // ============================================
         let prevIndexY = 0.5;
         let flickVelocity = 0;
-        const FLICK_THRESHOLD = 0.045;  // How fast the upward movement needs to be (higher = less sensitive)
+        let smoothedVelocity = 0;  // Smoothed velocity to prevent jitter
+        let velocityHistory = [0, 0, 0, 0, 0];  // Track last 5 frames
+        let stableFrames = 0;  // Count frames where finger is stable before flick
+        const FLICK_THRESHOLD = 0.055;  // How fast the upward movement needs to be
+        const STABLE_THRESHOLD = 0.015;  // Max movement to be considered "stable"
+        const MIN_STABLE_FRAMES = 3;  // Need to be stable for 3 frames before flick counts
 
         function updateHandGestures() {
             const now = performance.now();
@@ -1428,7 +1433,26 @@
             flickVelocity = prevIndexY - currentY;  // Positive = moving up
             prevIndexY = currentY;
 
-            const isFlickUp = flickVelocity > FLICK_THRESHOLD;
+            // Track velocity history for smoothing
+            velocityHistory.shift();
+            velocityHistory.push(flickVelocity);
+
+            // Calculate smoothed velocity (average of recent frames)
+            smoothedVelocity = velocityHistory.reduce((a, b) => a + b, 0) / velocityHistory.length;
+
+            // Track stable frames (finger not moving much)
+            const absVelocity = Math.abs(flickVelocity);
+            if (absVelocity < STABLE_THRESHOLD) {
+                stableFrames++;
+            } else if (flickVelocity > FLICK_THRESHOLD) {
+                // Only count as flick if we were stable before
+                // Don't reset stable frames during the flick itself
+            } else {
+                stableFrames = 0;  // Reset if moving but not flicking
+            }
+
+            // Flick is valid only if: was stable before AND sudden upward movement
+            const isFlickUp = flickVelocity > FLICK_THRESHOLD && stableFrames >= MIN_STABLE_FRAMES;
 
             // Mirror mode crosshair position (use index tip for aiming)
             const worldX = -(indexTip.x - 0.5) * 28;
@@ -1458,6 +1482,8 @@
                     // Fire when quick upward flick detected
                     if (isGunPose && isFlickUp) {
                         STATE.handState.state = 'fired';
+                        stableFrames = 0;  // Reset stable frames after firing
+                        velocityHistory = [0, 0, 0, 0, 0];  // Clear velocity history
                         fireShot();
                     } else if (!isGunPose) {
                         STATE.handState.state = 'idle';
