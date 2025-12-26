@@ -570,15 +570,30 @@
             }
 
             const canvas = document.createElement('canvas');
-            canvas.width = 128;
-            canvas.height = 128;
+            canvas.width = 256;
+            canvas.height = 256;
             const ctx = canvas.getContext('2d');
 
+            // Clear background (transparent)
+            ctx.clearRect(0, 0, 256, 256);
+
+            // Draw text with shadow for visibility
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+            ctx.shadowBlur = 8;
+            ctx.shadowOffsetX = 2;
+            ctx.shadowOffsetY = 2;
+
             ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 80px Arial';
+            ctx.font = 'bold 140px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(key, 64, 64);
+            ctx.fillText(key, 128, 128);
+
+            // Draw outline for extra visibility
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 4;
+            ctx.strokeText(key, 128, 128);
 
             const texture = new THREE.CanvasTexture(canvas);
             texture.minFilter = THREE.LinearFilter;
@@ -658,29 +673,75 @@
         }
 
         // ============================================
-        // CROSSHAIR (POOLED - NO RECREATION)
+        // CROSSHAIR (LARGE, VISIBLE)
         // ============================================
         function initCrosshair() {
             const group = new THREE.Group();
 
-            // Outer ring
+            // Large outer ring - very visible
+            const ringMat = new THREE.MeshBasicMaterial({
+                color: 0x00ff00,  // Green by default
+                opacity: 0.8,
+                transparent: true,
+                side: THREE.DoubleSide
+            });
             const ring = new THREE.Mesh(
-                new THREE.RingGeometry(0.8, 1.2, 24),
-                STATE.materials.crosshair
+                new THREE.RingGeometry(1.8, 2.2, 32),
+                ringMat
             );
+            ring.name = 'ring';
             group.add(ring);
+
+            // Inner ring
+            const innerRing = new THREE.Mesh(
+                new THREE.RingGeometry(0.8, 1.0, 24),
+                ringMat.clone()
+            );
+            innerRing.name = 'innerRing';
+            group.add(innerRing);
 
             // Center dot
             const dot = new THREE.Mesh(
-                new THREE.CircleGeometry(0.25, 12),
-                STATE.materials.crosshair
+                new THREE.CircleGeometry(0.3, 16),
+                ringMat.clone()
             );
             dot.position.z = 0.01;
+            dot.name = 'dot';
             group.add(dot);
+
+            // Cross lines for better visibility
+            const lineMat = new THREE.MeshBasicMaterial({
+                color: 0x00ff00,
+                opacity: 0.6,
+                transparent: true,
+                side: THREE.DoubleSide
+            });
+            const lineH = new THREE.Mesh(
+                new THREE.PlaneGeometry(4.5, 0.15),
+                lineMat
+            );
+            lineH.name = 'lineH';
+            group.add(lineH);
+            const lineV = new THREE.Mesh(
+                new THREE.PlaneGeometry(0.15, 4.5),
+                lineMat.clone()
+            );
+            lineV.name = 'lineV';
+            group.add(lineV);
 
             group.visible = false;
             STATE.scene.add(group);
             STATE.crosshair = group;
+        }
+
+        // Change crosshair color (green = normal, red = firing)
+        function setCrosshairColor(color) {
+            if (!STATE.crosshair) return;
+            STATE.crosshair.children.forEach(child => {
+                if (child.material) {
+                    child.material.color.setHex(color);
+                }
+            });
         }
 
         function updateCrosshairPosition(targetX, targetY, targetZ) {
@@ -723,9 +784,15 @@
                 string.position.y = -1.1;
                 mesh.add(string);
 
-                // Number sprite
-                const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: null }));
-                sprite.scale.set(1.4, 1.4, 1);
+                // Number sprite - positioned in front of balloon
+                const spriteMat = new THREE.SpriteMaterial({
+                    map: null,
+                    transparent: true,
+                    depthTest: false  // Always render on top
+                });
+                const sprite = new THREE.Sprite(spriteMat);
+                sprite.position.set(0, 0.2, 1.2);
+                sprite.scale.set(2.0, 2.0, 1);
                 mesh.add(sprite);
                 mesh.userData.sprite = sprite;
 
@@ -789,6 +856,8 @@
             const sprite = target.userData.sprite;
             sprite.material.map = getNumberTexture(number);
             sprite.material.needsUpdate = true;
+            sprite.position.set(0, 0.2, 1.2);  // Position in front of balloon
+            sprite.scale.set(2.0, 2.0, 1);  // Larger number
 
             target.userData = {
                 number,
@@ -804,7 +873,7 @@
             };
 
             target.visible = true;
-            target.scale.set(0.8, 1.0, 0.8);
+            target.scale.set(1.0, 1.2, 1.0);  // Bigger balloons
             STATE.targets.push(target);
 
             return target;
@@ -849,11 +918,14 @@
                 if (target.userData.isStrategy) {
                     const pulse = Math.sin(time * 4 + target.userData.pulsePhase) * 0.5 + 0.5;
                     target.material.emissiveIntensity = 0.4 + pulse * 0.5;
-                    const s = 1 + pulse * 0.2;
-                    target.scale.set(0.8 * s, 1.0 * s, 0.8 * s);
+                    const s = 1 + pulse * 0.15;
+                    target.scale.set(1.0 * s, 1.2 * s, 1.0 * s);
                 } else if (target.userData.isAnswer) {
-                    const glow = Math.sin(time * 2) * 0.1 + 0.5;
+                    const glow = Math.sin(time * 2) * 0.15 + 0.5;
                     target.material.emissiveIntensity = glow;
+                    target.scale.set(1.0, 1.2, 1.0);
+                } else {
+                    target.scale.set(1.0, 1.2, 1.0);
                 }
             });
         }
@@ -973,15 +1045,19 @@
             playSFX('shoot');
             STATE.player.shots++;
 
+            // Change crosshair to RED when firing
+            setCrosshairColor(0xff0000);
+            setTimeout(() => setCrosshairColor(0x00ff00), 200);  // Back to green
+
             // Create muzzle flash
             if (STATE.crosshair && STATE.crosshair.visible) {
                 const flash = getParticle();
                 if (flash) {
                     flash.position.copy(STATE.crosshair.position);
-                    flash.scale.setScalar(0.4);
-                    flash.material.color.setHex(0xffff00);
+                    flash.scale.setScalar(0.6);
+                    flash.material.color.setHex(0xff0000);
                     flash.visible = true;
-                    setTimeout(() => { flash.visible = false; }, 60);
+                    setTimeout(() => { flash.visible = false; }, 100);
                 }
             }
 
