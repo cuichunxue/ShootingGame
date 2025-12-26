@@ -937,7 +937,26 @@
             }
         }
 
-        // Legacy playSFX wrapper for compatibility
+        // Legacy playSFX wrapper for compatibility - iOS ENHANCED
+        let audioUnlocked = false;
+
+        function unlockAudioForIOS() {
+            if (!STATE.audioContext) return;
+
+            // Play a silent buffer to unlock iOS audio
+            try {
+                const buffer = STATE.audioContext.createBuffer(1, 1, 22050);
+                const source = STATE.audioContext.createBufferSource();
+                source.buffer = buffer;
+                source.connect(STATE.audioContext.destination);
+                source.start(0);
+                audioUnlocked = true;
+                console.log('[Audio] iOS unlock buffer played');
+            } catch (e) {
+                console.warn('[Audio] iOS unlock failed:', e);
+            }
+        }
+
         function playSFX(type) {
             // Create audio context synchronously within user gesture
             if (!STATE.audioContext) {
@@ -945,19 +964,35 @@
                     const AudioContext = window.AudioContext || window.webkitAudioContext;
                     STATE.audioContext = new AudioContext();
                     STATE.audioReady = true;
-                    console.log('[Audio] Created context in user gesture, state:', STATE.audioContext.state);
+                    console.log('[Audio] Created context, state:', STATE.audioContext.state);
+
+                    // Immediately unlock for iOS
+                    unlockAudioForIOS();
                 } catch (e) {
                     console.warn('[Audio] Failed to create context:', e);
                     return;
                 }
             }
 
-            // Resume if suspended (must be within user gesture)
+            // Resume if suspended (iOS requirement)
             if (STATE.audioContext.state === 'suspended') {
                 STATE.audioContext.resume().then(() => {
-                    console.log('[Audio] Context resumed, state:', STATE.audioContext.state);
+                    console.log('[Audio] Resumed, state:', STATE.audioContext.state);
+                    if (!audioUnlocked) {
+                        unlockAudioForIOS();
+                    }
+                    // Play the sound after resume completes
+                    playSound(type);
                 });
+                return;  // Don't play yet, wait for resume
             }
+
+            // Context is running, play immediately
+            playSound(type);
+        }
+
+        function playSound(type) {
+            if (!STATE.audioContext || STATE.audioContext.state !== 'running') return;
 
             switch(type) {
                 case 'shoot':
@@ -2377,9 +2412,26 @@
             }, 200);
         }
 
-        // Touch support
+        // Touch support - with iOS audio unlock
         document.getElementById('gameCanvas').addEventListener('touchstart', e => {
             e.preventDefault();
+
+            // iOS requires audio context creation in touch handler
+            if (!STATE.audioContext) {
+                try {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    STATE.audioContext = new AudioContext();
+                    STATE.audioReady = true;
+                    console.log('[Touch] Created AudioContext, state:', STATE.audioContext.state);
+                    unlockAudioForIOS();
+                } catch (err) {
+                    console.warn('[Touch] AudioContext creation failed:', err);
+                }
+            }
+            if (STATE.audioContext && STATE.audioContext.state === 'suspended') {
+                STATE.audioContext.resume();
+            }
+
             const touch = e.touches[0];
             handlePointerShoot(touch.clientX, touch.clientY);
         }, { passive: false });
