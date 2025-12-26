@@ -212,18 +212,77 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            font-size: 3.5rem;
+            font-size: 4rem;
             font-weight: bold;
             z-index: 500;
             pointer-events: none;
-            animation: feedbackPop 0.6s ease-out forwards;
-            text-shadow: 0 0 10px rgba(0, 0, 0, 1), 0 0 20px rgba(0, 0, 0, 0.8);
+            animation: feedbackPop 0.8s ease-out forwards;
+            text-shadow: 0 0 20px currentColor, 0 0 40px currentColor, 0 4px 8px rgba(0, 0, 0, 0.8);
+            letter-spacing: 2px;
         }
 
         @keyframes feedbackPop {
-            0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
-            30% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
-            100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+            0% {
+                transform: translate(-50%, -50%) scale(0.3) rotate(-5deg);
+                opacity: 0;
+                filter: blur(10px);
+            }
+            20% {
+                transform: translate(-50%, -50%) scale(1.3) rotate(3deg);
+                opacity: 1;
+                filter: blur(0);
+            }
+            50% {
+                transform: translate(-50%, -50%) scale(1.1) rotate(-1deg);
+                opacity: 1;
+            }
+            100% {
+                transform: translate(-50%, -60%) scale(0.9);
+                opacity: 0;
+                filter: blur(5px);
+            }
+        }
+
+        /* Floating score popup at hit location */
+        .floating-score {
+            position: fixed;
+            font-size: 2rem;
+            font-weight: bold;
+            pointer-events: none;
+            z-index: 600;
+            animation: floatUp 1s ease-out forwards;
+            text-shadow: 0 0 15px currentColor, 0 2px 4px rgba(0, 0, 0, 0.8);
+        }
+
+        @keyframes floatUp {
+            0% {
+                transform: translateY(0) scale(1.5);
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-80px) scale(0.8);
+                opacity: 0;
+            }
+        }
+
+        /* Combo multiplier display */
+        .combo-display {
+            position: fixed;
+            top: 25%;
+            right: 20px;
+            font-size: 3rem;
+            font-weight: bold;
+            color: #FFD700;
+            pointer-events: none;
+            z-index: 500;
+            animation: comboPulse 0.5s ease-out;
+            text-shadow: 0 0 20px #FFD700, 0 0 40px #FF8C00;
+        }
+
+        @keyframes comboPulse {
+            0% { transform: scale(0.5); opacity: 0; }
+            50% { transform: scale(1.3); }
+            100% { transform: scale(1); opacity: 1; }
         }
 
         /* Strategy hint popup */
@@ -410,7 +469,7 @@
             },
             MAX_TARGETS: 5,
             TARGET_POOL_SIZE: 8,
-            PARTICLE_POOL_SIZE: 20,
+            PARTICLE_POOL_SIZE: 50,  // Increased for enhanced VFX
             QUESTIONS_PER_ROUND: 10,
             TIME_LIMIT: 60,
             SCORE_CORRECT: 100,
@@ -514,7 +573,7 @@
         }
 
         // ============================================
-        // AUDIO SYSTEM (OPTIMIZED)
+        // AUDIO SYSTEM (ENHANCED - REALISTIC SOUNDS)
         // ============================================
         async function initAudio() {
             try {
@@ -523,41 +582,332 @@
                 if (STATE.audioContext.state === 'suspended') {
                     await STATE.audioContext.resume();
                 }
-                STATE.audioBuffers = {
-                    shoot: [[200, 0.06, 'square']],
-                    correct: [[523, 0.1], [659, 0.1, 'sine', 60]],
-                    smart: [[659, 0.08], [784, 0.08, 'sine', 50], [880, 0.1, 'sine', 100]],
-                    wrong: [[180, 0.2]],
-                    miss: [[140, 0.1]]
-                };
                 STATE.audioReady = true;
             } catch (e) {
                 console.warn('Audio init failed:', e);
             }
         }
 
-        function playSFX(type) {
-            if (!STATE.audioContext || !STATE.audioReady) return;
-            const tones = STATE.audioBuffers[type];
-            if (!tones) return;
+        // Create noise buffer for explosion sounds
+        function createNoiseBuffer(duration) {
+            const sampleRate = STATE.audioContext.sampleRate;
+            const length = sampleRate * duration;
+            const buffer = STATE.audioContext.createBuffer(1, length, sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < length; i++) {
+                data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (length * 0.3));
+            }
+            return buffer;
+        }
 
-            tones.forEach(([freq, duration, oscType = 'sine', delay = 0]) => {
-                setTimeout(() => {
-                    try {
-                        const osc = STATE.audioContext.createOscillator();
-                        const gain = STATE.audioContext.createGain();
-                        osc.connect(gain);
-                        gain.connect(STATE.audioContext.destination);
-                        osc.frequency.value = freq;
-                        osc.type = oscType;
-                        const now = STATE.audioContext.currentTime;
-                        gain.gain.setValueAtTime(0.12, now);
-                        gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
-                        osc.start(now);
-                        osc.stop(now + duration);
-                    } catch (e) {}
-                }, delay);
+        // Realistic gun shot sound
+        function playShootSound() {
+            if (!STATE.audioContext || !STATE.audioReady) return;
+
+            const now = STATE.audioContext.currentTime;
+
+            // Attack transient (click)
+            const clickOsc = STATE.audioContext.createOscillator();
+            const clickGain = STATE.audioContext.createGain();
+            clickOsc.connect(clickGain);
+            clickGain.connect(STATE.audioContext.destination);
+            clickOsc.frequency.setValueAtTime(1200, now);
+            clickOsc.frequency.exponentialRampToValueAtTime(100, now + 0.05);
+            clickOsc.type = 'square';
+            clickGain.gain.setValueAtTime(0.3, now);
+            clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+            clickOsc.start(now);
+            clickOsc.stop(now + 0.05);
+
+            // Low thump
+            const thumpOsc = STATE.audioContext.createOscillator();
+            const thumpGain = STATE.audioContext.createGain();
+            thumpOsc.connect(thumpGain);
+            thumpGain.connect(STATE.audioContext.destination);
+            thumpOsc.frequency.setValueAtTime(150, now);
+            thumpOsc.frequency.exponentialRampToValueAtTime(50, now + 0.1);
+            thumpOsc.type = 'sine';
+            thumpGain.gain.setValueAtTime(0.4, now);
+            thumpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+            thumpOsc.start(now);
+            thumpOsc.stop(now + 0.1);
+
+            // Noise burst
+            const noiseBuffer = createNoiseBuffer(0.08);
+            const noiseSource = STATE.audioContext.createBufferSource();
+            const noiseGain = STATE.audioContext.createGain();
+            const noiseFilter = STATE.audioContext.createBiquadFilter();
+            noiseSource.buffer = noiseBuffer;
+            noiseSource.connect(noiseFilter);
+            noiseFilter.connect(noiseGain);
+            noiseGain.connect(STATE.audioContext.destination);
+            noiseFilter.type = 'highpass';
+            noiseFilter.frequency.value = 1000;
+            noiseGain.gain.setValueAtTime(0.2, now);
+            noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+            noiseSource.start(now);
+        }
+
+        // Explosion sound (balloon pop)
+        function playExplosionSound(isCorrect) {
+            if (!STATE.audioContext || !STATE.audioReady) return;
+
+            const now = STATE.audioContext.currentTime;
+
+            // Pop sound
+            const popOsc = STATE.audioContext.createOscillator();
+            const popGain = STATE.audioContext.createGain();
+            popOsc.connect(popGain);
+            popGain.connect(STATE.audioContext.destination);
+            popOsc.frequency.setValueAtTime(isCorrect ? 800 : 400, now);
+            popOsc.frequency.exponentialRampToValueAtTime(isCorrect ? 200 : 100, now + 0.15);
+            popOsc.type = 'sine';
+            popGain.gain.setValueAtTime(0.3, now);
+            popGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+            popOsc.start(now);
+            popOsc.stop(now + 0.15);
+
+            // Noise burst for pop texture
+            const noiseBuffer = createNoiseBuffer(0.1);
+            const noiseSource = STATE.audioContext.createBufferSource();
+            const noiseGain = STATE.audioContext.createGain();
+            const noiseFilter = STATE.audioContext.createBiquadFilter();
+            noiseSource.buffer = noiseBuffer;
+            noiseSource.connect(noiseFilter);
+            noiseFilter.connect(noiseGain);
+            noiseGain.connect(STATE.audioContext.destination);
+            noiseFilter.type = 'bandpass';
+            noiseFilter.frequency.value = isCorrect ? 2000 : 800;
+            noiseFilter.Q.value = 1;
+            noiseGain.gain.setValueAtTime(0.15, now);
+            noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+            noiseSource.start(now);
+        }
+
+        // Correct answer celebration sound
+        function playCorrectSound() {
+            if (!STATE.audioContext || !STATE.audioReady) return;
+
+            const now = STATE.audioContext.currentTime;
+            const notes = [523, 659, 784, 1047]; // C5, E5, G5, C6
+
+            notes.forEach((freq, i) => {
+                const osc = STATE.audioContext.createOscillator();
+                const gain = STATE.audioContext.createGain();
+                osc.connect(gain);
+                gain.connect(STATE.audioContext.destination);
+                osc.frequency.value = freq;
+                osc.type = 'sine';
+                const startTime = now + i * 0.08;
+                gain.gain.setValueAtTime(0, startTime);
+                gain.gain.linearRampToValueAtTime(0.15, startTime + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.2);
+                osc.start(startTime);
+                osc.stop(startTime + 0.2);
             });
+        }
+
+        // Smart hit sound (golden)
+        function playSmartSound() {
+            if (!STATE.audioContext || !STATE.audioReady) return;
+
+            const now = STATE.audioContext.currentTime;
+            const notes = [659, 784, 880]; // E5, G5, A5
+
+            notes.forEach((freq, i) => {
+                const osc = STATE.audioContext.createOscillator();
+                const gain = STATE.audioContext.createGain();
+                osc.connect(gain);
+                gain.connect(STATE.audioContext.destination);
+                osc.frequency.value = freq;
+                osc.type = 'triangle';
+                const startTime = now + i * 0.06;
+                gain.gain.setValueAtTime(0, startTime);
+                gain.gain.linearRampToValueAtTime(0.12, startTime + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.25);
+                osc.start(startTime);
+                osc.stop(startTime + 0.25);
+            });
+
+            // Sparkle effect
+            for (let i = 0; i < 5; i++) {
+                const sparkle = STATE.audioContext.createOscillator();
+                const sparkleGain = STATE.audioContext.createGain();
+                sparkle.connect(sparkleGain);
+                sparkleGain.connect(STATE.audioContext.destination);
+                sparkle.frequency.value = 2000 + Math.random() * 2000;
+                sparkle.type = 'sine';
+                const startTime = now + 0.1 + i * 0.04;
+                sparkleGain.gain.setValueAtTime(0.03, startTime);
+                sparkleGain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.08);
+                sparkle.start(startTime);
+                sparkle.stop(startTime + 0.08);
+            }
+        }
+
+        // Wrong answer sound
+        function playWrongSound() {
+            if (!STATE.audioContext || !STATE.audioReady) return;
+
+            const now = STATE.audioContext.currentTime;
+
+            // Descending tone
+            const osc = STATE.audioContext.createOscillator();
+            const gain = STATE.audioContext.createGain();
+            osc.connect(gain);
+            gain.connect(STATE.audioContext.destination);
+            osc.frequency.setValueAtTime(300, now);
+            osc.frequency.linearRampToValueAtTime(150, now + 0.3);
+            osc.type = 'sawtooth';
+            gain.gain.setValueAtTime(0.15, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+            osc.start(now);
+            osc.stop(now + 0.3);
+
+            // Buzz
+            const buzz = STATE.audioContext.createOscillator();
+            const buzzGain = STATE.audioContext.createGain();
+            buzz.connect(buzzGain);
+            buzzGain.connect(STATE.audioContext.destination);
+            buzz.frequency.value = 80;
+            buzz.type = 'square';
+            buzzGain.gain.setValueAtTime(0.1, now);
+            buzzGain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+            buzz.start(now);
+            buzz.stop(now + 0.2);
+        }
+
+        // Miss sound (whoosh)
+        function playMissSound() {
+            if (!STATE.audioContext || !STATE.audioReady) return;
+
+            const now = STATE.audioContext.currentTime;
+
+            // Whoosh noise
+            const noiseBuffer = createNoiseBuffer(0.15);
+            const noiseSource = STATE.audioContext.createBufferSource();
+            const noiseGain = STATE.audioContext.createGain();
+            const noiseFilter = STATE.audioContext.createBiquadFilter();
+            noiseSource.buffer = noiseBuffer;
+            noiseSource.connect(noiseFilter);
+            noiseFilter.connect(noiseGain);
+            noiseGain.connect(STATE.audioContext.destination);
+            noiseFilter.type = 'bandpass';
+            noiseFilter.frequency.setValueAtTime(2000, now);
+            noiseFilter.frequency.linearRampToValueAtTime(500, now + 0.15);
+            noiseFilter.Q.value = 2;
+            noiseGain.gain.setValueAtTime(0.08, now);
+            noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+            noiseSource.start(now);
+        }
+
+        // Combo sound (increasing excitement)
+        function playComboSound(streak) {
+            if (!STATE.audioContext || !STATE.audioReady) return;
+            if (streak < 2) return;
+
+            const now = STATE.audioContext.currentTime;
+            const baseFreq = 400 + streak * 50;
+
+            // Ascending arpeggio
+            for (let i = 0; i < Math.min(streak, 5); i++) {
+                const osc = STATE.audioContext.createOscillator();
+                const gain = STATE.audioContext.createGain();
+                osc.connect(gain);
+                gain.connect(STATE.audioContext.destination);
+                osc.frequency.value = baseFreq * (1 + i * 0.25);
+                osc.type = 'sine';
+                const startTime = now + i * 0.04;
+                gain.gain.setValueAtTime(0.08, startTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.15);
+                osc.start(startTime);
+                osc.stop(startTime + 0.15);
+            }
+
+            // Big combo bonus sound
+            if (streak >= 5) {
+                const chord = [523, 659, 784, 1047];
+                chord.forEach(freq => {
+                    const osc = STATE.audioContext.createOscillator();
+                    const gain = STATE.audioContext.createGain();
+                    osc.connect(gain);
+                    gain.connect(STATE.audioContext.destination);
+                    osc.frequency.value = freq;
+                    osc.type = 'sine';
+                    gain.gain.setValueAtTime(0.05, now + 0.2);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+                    osc.start(now + 0.2);
+                    osc.stop(now + 0.6);
+                });
+            }
+        }
+
+        // Level up fanfare
+        function playLevelUpSound() {
+            if (!STATE.audioContext || !STATE.audioReady) return;
+
+            const now = STATE.audioContext.currentTime;
+            const notes = [523, 659, 784, 1047, 1319]; // C5, E5, G5, C6, E6
+
+            notes.forEach((freq, i) => {
+                const osc = STATE.audioContext.createOscillator();
+                const gain = STATE.audioContext.createGain();
+                osc.connect(gain);
+                gain.connect(STATE.audioContext.destination);
+                osc.frequency.value = freq;
+                osc.type = 'sine';
+                const startTime = now + i * 0.1;
+                gain.gain.setValueAtTime(0, startTime);
+                gain.gain.linearRampToValueAtTime(0.2, startTime + 0.03);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.4);
+                osc.start(startTime);
+                osc.stop(startTime + 0.4);
+            });
+
+            // Shimmer effect
+            for (let i = 0; i < 10; i++) {
+                const shimmer = STATE.audioContext.createOscillator();
+                const shimmerGain = STATE.audioContext.createGain();
+                shimmer.connect(shimmerGain);
+                shimmerGain.connect(STATE.audioContext.destination);
+                shimmer.frequency.value = 1500 + Math.random() * 2000;
+                shimmer.type = 'sine';
+                const startTime = now + 0.3 + i * 0.03;
+                shimmerGain.gain.setValueAtTime(0.02, startTime);
+                shimmerGain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.1);
+                shimmer.start(startTime);
+                shimmer.stop(startTime + 0.1);
+            }
+        }
+
+        // Legacy playSFX wrapper for compatibility
+        function playSFX(type) {
+            switch(type) {
+                case 'shoot':
+                    playShootSound();
+                    break;
+                case 'correct':
+                    playExplosionSound(true);
+                    playCorrectSound();
+                    break;
+                case 'smart':
+                    playExplosionSound(true);
+                    playSmartSound();
+                    break;
+                case 'wrong':
+                    playExplosionSound(false);
+                    playWrongSound();
+                    break;
+                case 'miss':
+                    playMissSound();
+                    break;
+                case 'combo':
+                    playComboSound(STATE.player.streak);
+                    break;
+                case 'levelup':
+                    playLevelUpSound();
+                    break;
+            }
         }
 
         // ============================================
@@ -1120,17 +1470,11 @@
             setCrosshairColor(0xff0000);
             setTimeout(() => setCrosshairColor(0x00ff00), 200);  // Back to green
 
-            // Create muzzle flash
-            if (STATE.crosshair && STATE.crosshair.visible) {
-                const flash = getParticle();
-                if (flash) {
-                    flash.position.copy(STATE.crosshair.position);
-                    flash.scale.setScalar(0.6);
-                    flash.material.color.setHex(0xff0000);
-                    flash.visible = true;
-                    setTimeout(() => { flash.visible = false; }, 100);
-                }
-            }
+            // Create muzzle flash effect
+            createMuzzleFlash();
+
+            // Small screen shake for shooting
+            triggerScreenShake(0.15);
 
             // Raycast from camera through crosshair position
             const raycaster = new THREE.Raycaster();
@@ -1158,6 +1502,9 @@
         function handleHit(target) {
             const { isAnswer, isStrategy, number } = target.userData;
 
+            // Store position before hiding
+            const hitPosition = target.position.clone();
+
             // Hide target
             target.visible = false;
             STATE.targets = STATE.targets.filter(t => t !== target);
@@ -1165,7 +1512,10 @@
             STATE.player.hits++;
 
             // Explosion effect
-            createExplosion(target.position, isAnswer ? 0x4CAF50 : isStrategy ? 0xFFD700 : 0xff4444);
+            createExplosion(hitPosition, isAnswer ? 0x4CAF50 : isStrategy ? 0xFFD700 : 0xff4444);
+
+            // Crosshair pulse on hit
+            pulseCrosshair();
 
             if (isAnswer) {
                 STATE.player.score += CONFIG.SCORE_CORRECT;
@@ -1173,11 +1523,22 @@
                 STATE.player.bestStreak = Math.max(STATE.player.bestStreak, STATE.player.streak);
 
                 showFeedback(`+${CONFIG.SCORE_CORRECT}`, '#4CAF50');
+                showFloatingScore(hitPosition, `+${CONFIG.SCORE_CORRECT}`, '#4CAF50');
+                showCombo(STATE.player.streak);
                 playSFX('correct');
+                playComboSound(STATE.player.streak);
+
+                // VFX: Screen shake and background flash for correct answer
+                triggerScreenShake(0.4);
+                triggerBgFlash(0x1a3a1a);  // Green flash
+
+                // Update streak fire effect
+                createStreakFire();
 
                 if (STATE.player.streak >= 5 && STATE.difficultyLevel < 4) {
                     STATE.difficultyLevel++;
                     showStrategyHint('Level UP!');
+                    playLevelUpSound();
                 }
 
                 nextQuestion();
@@ -1188,7 +1549,17 @@
                 STATE.player.bestStreak = Math.max(STATE.player.bestStreak, STATE.player.streak);
 
                 showFeedback(`SMART +${CONFIG.SCORE_SMART}`, '#FFD700');
+                showFloatingScore(hitPosition, `SMART! +${CONFIG.SCORE_SMART}`, '#FFD700');
+                showCombo(STATE.player.streak);
                 playSFX('smart');
+                playComboSound(STATE.player.streak);
+
+                // VFX: Golden flash for smart hit
+                triggerScreenShake(0.3);
+                triggerBgFlash(0x2a2a0a);  // Golden flash
+
+                // Update streak fire effect
+                createStreakFire();
 
                 // Show learning hint
                 if (STATE.currentQuestion.hint) {
@@ -1200,7 +1571,19 @@
                 STATE.player.streak = Math.max(0, STATE.player.streak - 1);
 
                 showFeedback(`-${CONFIG.PENALTY_WRONG}`, '#ff4444');
+                showFloatingScore(hitPosition, `-${CONFIG.PENALTY_WRONG}`, '#ff4444');
                 playSFX('wrong');
+
+                // VFX: Red flash for wrong answer
+                triggerScreenShake(0.5);
+                triggerBgFlash(0x3a0a0a);  // Red flash
+
+                // Reset streak fire
+                const scoreEl = document.getElementById('playerScore');
+                if (scoreEl) {
+                    scoreEl.style.boxShadow = '';
+                    scoreEl.style.textShadow = '';
+                }
 
                 if (STATE.player.streak === 0 && STATE.difficultyLevel > 1) {
                     STATE.difficultyLevel--;
@@ -1211,26 +1594,82 @@
         }
 
         // ============================================
-        // VFX SYSTEM
+        // VFX SYSTEM (ENHANCED)
         // ============================================
-        function createExplosion(position, color) {
-            const count = 8;
-            for (let i = 0; i < count; i++) {
+
+        // Screen shake state
+        let screenShake = { intensity: 0, decay: 0.9 };
+
+        function triggerScreenShake(intensity) {
+            screenShake.intensity = Math.max(screenShake.intensity, intensity);
+        }
+
+        function updateScreenShake() {
+            if (screenShake.intensity > 0.01) {
+                const shakeX = (Math.random() - 0.5) * screenShake.intensity;
+                const shakeY = (Math.random() - 0.5) * screenShake.intensity;
+                STATE.camera.position.x = shakeX;
+                STATE.camera.position.y = 2 + shakeY;
+                screenShake.intensity *= screenShake.decay;
+            } else {
+                STATE.camera.position.x = 0;
+                STATE.camera.position.y = 2;
+                screenShake.intensity = 0;
+            }
+        }
+
+        // Background flash
+        let bgFlash = { active: false, color: 0x0a0a1a, targetColor: 0x0a0a1a, speed: 0.1 };
+
+        function triggerBgFlash(color) {
+            bgFlash.active = true;
+            bgFlash.color = color;
+            setTimeout(() => {
+                bgFlash.active = false;
+            }, 150);
+        }
+
+        function updateBgFlash() {
+            if (bgFlash.active) {
+                STATE.scene.background.setHex(bgFlash.color);
+            } else {
+                // Lerp back to original
+                STATE.scene.background.lerp(new THREE.Color(0x0a0a1a), 0.15);
+            }
+        }
+
+        // Muzzle flash effect
+        function createMuzzleFlash() {
+            if (!STATE.crosshair || !STATE.crosshair.visible) return;
+
+            // Create multiple flash particles
+            for (let i = 0; i < 5; i++) {
                 const p = getParticle();
                 if (!p) break;
 
-                p.position.copy(position);
-                p.material.color.setHex(color);
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * 0.5;
+
+                p.position.set(
+                    STATE.crosshair.position.x + Math.cos(angle) * dist,
+                    STATE.crosshair.position.y + Math.sin(angle) * dist,
+                    STATE.crosshair.position.z + 0.5
+                );
+
+                // Yellow/orange flash colors
+                const flashColors = [0xffff00, 0xff8800, 0xffaa00, 0xffffff];
+                p.material.color.setHex(flashColors[Math.floor(Math.random() * flashColors.length)]);
                 p.material.opacity = 1;
-                p.scale.setScalar(0.8);
+                p.scale.setScalar(0.3 + Math.random() * 0.4);
 
                 p.userData = {
                     velocity: new THREE.Vector3(
-                        (Math.random() - 0.5) * 0.35,
-                        (Math.random() - 0.5) * 0.35,
-                        (Math.random() - 0.5) * 0.35
+                        (Math.random() - 0.5) * 0.2,
+                        (Math.random() - 0.5) * 0.2,
+                        Math.random() * 0.3
                     ),
-                    life: 1.0
+                    life: 0.3 + Math.random() * 0.2,
+                    isFlash: true
                 };
 
                 p.visible = true;
@@ -1238,13 +1677,171 @@
             }
         }
 
+        // Enhanced explosion with more particles and variety
+        function createExplosion(position, color) {
+            const count = 15;  // More particles
+
+            // Main explosion particles
+            for (let i = 0; i < count; i++) {
+                const p = getParticle();
+                if (!p) break;
+
+                p.position.copy(position);
+
+                // Vary colors slightly
+                const colorObj = new THREE.Color(color);
+                colorObj.offsetHSL(0, (Math.random() - 0.5) * 0.2, (Math.random() - 0.5) * 0.3);
+                p.material.color.copy(colorObj);
+                p.material.opacity = 1;
+
+                const size = 0.4 + Math.random() * 0.8;
+                p.scale.setScalar(size);
+
+                // Explosive outward velocity
+                const speed = 0.2 + Math.random() * 0.4;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.random() * Math.PI;
+
+                p.userData = {
+                    velocity: new THREE.Vector3(
+                        Math.sin(phi) * Math.cos(theta) * speed,
+                        Math.sin(phi) * Math.sin(theta) * speed + 0.1,
+                        Math.cos(phi) * speed
+                    ),
+                    life: 0.8 + Math.random() * 0.5,
+                    initialSize: size,
+                    hasTrail: Math.random() > 0.5
+                };
+
+                p.visible = true;
+                STATE.particles.push(p);
+            }
+
+            // Ring shockwave effect
+            createShockwave(position, color);
+        }
+
+        // Shockwave ring effect
+        function createShockwave(position, color) {
+            const ringGeom = new THREE.RingGeometry(0.1, 0.3, 24);
+            const ringMat = new THREE.MeshBasicMaterial({
+                color: color,
+                opacity: 0.8,
+                transparent: true,
+                side: THREE.DoubleSide
+            });
+            const ring = new THREE.Mesh(ringGeom, ringMat);
+            ring.position.copy(position);
+            ring.lookAt(STATE.camera.position);
+            STATE.scene.add(ring);
+
+            // Animate ring expansion
+            let scale = 1;
+            let opacity = 0.8;
+            const animateRing = () => {
+                scale += 0.4;
+                opacity -= 0.08;
+                ring.scale.setScalar(scale);
+                ring.material.opacity = opacity;
+
+                if (opacity > 0) {
+                    requestAnimationFrame(animateRing);
+                } else {
+                    STATE.scene.remove(ring);
+                    ring.geometry.dispose();
+                    ring.material.dispose();
+                }
+            };
+            requestAnimationFrame(animateRing);
+        }
+
+        // Crosshair pulse effect on hit
+        function pulseCrosshair() {
+            if (!STATE.crosshair) return;
+
+            let pulseScale = 1.5;
+            const animatePulse = () => {
+                pulseScale -= 0.08;
+                if (pulseScale > 1) {
+                    STATE.crosshair.scale.setScalar(pulseScale);
+                    requestAnimationFrame(animatePulse);
+                } else {
+                    STATE.crosshair.scale.setScalar(1);
+                }
+            };
+            requestAnimationFrame(animatePulse);
+        }
+
+        // Streak fire particles around score
+        function createStreakFire() {
+            if (STATE.player.streak < 3) return;
+
+            const scoreEl = document.getElementById('playerScore');
+            if (!scoreEl) return;
+
+            // Add fire glow effect
+            const intensity = Math.min(STATE.player.streak / 10, 1);
+            scoreEl.style.boxShadow = `0 0 ${20 + intensity * 30}px rgba(255, ${150 - intensity * 100}, 0, ${0.5 + intensity * 0.5})`;
+            scoreEl.style.textShadow = `0 0 10px rgba(255, ${200 - intensity * 100}, 0, 1)`;
+        }
+
+        // Show floating score at world position
+        function showFloatingScore(worldPos, text, color) {
+            // Project 3D position to screen
+            const screenPos = worldPos.clone().project(STATE.camera);
+            const x = (screenPos.x * 0.5 + 0.5) * window.innerWidth;
+            const y = (-screenPos.y * 0.5 + 0.5) * window.innerHeight;
+
+            const div = document.createElement('div');
+            div.className = 'floating-score';
+            div.textContent = text;
+            div.style.left = `${x}px`;
+            div.style.top = `${y}px`;
+            div.style.color = color;
+            document.body.appendChild(div);
+            setTimeout(() => div.remove(), 1000);
+        }
+
+        // Show combo display
+        function showCombo(streak) {
+            if (streak < 2) return;
+
+            document.querySelectorAll('.combo-display').forEach(d => d.remove());
+
+            const div = document.createElement('div');
+            div.className = 'combo-display';
+            div.textContent = `${streak}x COMBO!`;
+
+            if (streak >= 10) {
+                div.style.color = '#FF0000';
+                div.style.fontSize = '4rem';
+                div.textContent = `🔥 ${streak}x COMBO! 🔥`;
+            } else if (streak >= 5) {
+                div.style.color = '#FF8C00';
+                div.style.fontSize = '3.5rem';
+            }
+
+            document.body.appendChild(div);
+            setTimeout(() => div.remove(), 1500);
+        }
+
         function updateParticles(deltaTime) {
             STATE.particles = STATE.particles.filter(p => {
+                if (!p.userData) return false;
+
                 p.position.add(p.userData.velocity);
-                p.userData.velocity.y -= 0.012;
-                p.userData.life -= deltaTime * 3;
-                p.material.opacity = p.userData.life;
-                p.scale.setScalar(0.8 * p.userData.life);
+
+                // Gravity (less for flash particles)
+                if (!p.userData.isFlash) {
+                    p.userData.velocity.y -= 0.015;
+                }
+
+                p.userData.life -= deltaTime * (p.userData.isFlash ? 8 : 2.5);
+                p.material.opacity = Math.max(0, p.userData.life);
+
+                // Size animation
+                const lifeRatio = p.userData.life / (p.userData.initialSize || 1);
+                p.scale.setScalar((p.userData.initialSize || 0.8) * Math.max(0.1, lifeRatio));
 
                 if (p.userData.life <= 0) {
                     p.visible = false;
@@ -1397,6 +1994,8 @@
             updateTargets(deltaTime);
             updateParticles(deltaTime);
             interpolateCrosshair();
+            updateScreenShake();
+            updateBgFlash();
             updateHUD();
 
             // Render
