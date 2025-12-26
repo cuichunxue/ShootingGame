@@ -981,7 +981,9 @@
         }
 
         // ============================================
-        // HAND GESTURE FSM (OPTIMIZED)
+        // HAND GESTURE FSM - GUN GESTURE
+        // Thumb up + Index extended = Aim
+        // Thumb up + Index curled = Fire
         // ============================================
         function updateHandGestures() {
             const now = performance.now();
@@ -993,37 +995,65 @@
             }
 
             const landmarks = STATE.handsData[0];
+
+            // Thumb landmarks
+            const thumbTip = landmarks[4];
+            const thumbIP = landmarks[3];
+            const thumbMCP = landmarks[2];
+
+            // Index finger landmarks
             const indexTip = landmarks[8];
             const indexPIP = landmarks[6];
+            const indexMCP = landmarks[5];
 
-            // Calculate finger extension
-            const fingerLength = Math.sqrt(
+            // Wrist for reference
+            const wrist = landmarks[0];
+
+            // Check if thumb is extended (pointing up/out)
+            const thumbLength = Math.sqrt(
+                Math.pow(thumbTip.x - thumbMCP.x, 2) +
+                Math.pow(thumbTip.y - thumbMCP.y, 2)
+            );
+            const isThumbUp = thumbLength > 0.08 && thumbTip.y < thumbMCP.y;
+
+            // Check index finger extension
+            const indexLength = Math.sqrt(
                 Math.pow(indexTip.x - indexPIP.x, 2) +
                 Math.pow(indexTip.y - indexPIP.y, 2) +
                 Math.pow(indexTip.z - indexPIP.z, 2)
             );
+            const isIndexExtended = indexLength > CONFIG.GESTURE.EXTEND_THRESHOLD;
+            const isIndexCurled = indexLength < CONFIG.GESTURE.CURL_THRESHOLD;
 
-            // Mirror mode crosshair position
+            // Gun gesture: thumb up is required
+            const isGunPose = isThumbUp;
+
+            // Mirror mode crosshair position (use index tip for aiming)
             const worldX = -(indexTip.x - 0.5) * 30;
             const worldY = -(indexTip.y - 0.5) * 22;
             const worldZ = -6;
 
-            updateCrosshairPosition(worldX, worldY, worldZ);
-            if (STATE.crosshair) STATE.crosshair.visible = true;
-
-            const isExtended = fingerLength > CONFIG.GESTURE.EXTEND_THRESHOLD;
-            const isCurled = fingerLength < CONFIG.GESTURE.CURL_THRESHOLD;
+            // Only show crosshair when in gun pose
+            if (isGunPose) {
+                updateCrosshairPosition(worldX, worldY, worldZ);
+                if (STATE.crosshair) STATE.crosshair.visible = true;
+            } else {
+                if (STATE.crosshair) STATE.crosshair.visible = false;
+            }
 
             switch (STATE.handState.state) {
                 case 'idle':
-                    if (isExtended) STATE.handState.state = 'ready';
+                    // Enter ready state when gun pose with index extended
+                    if (isGunPose && isIndexExtended) STATE.handState.state = 'ready';
                     break;
 
                 case 'ready':
-                    if (isCurled) {
+                    // Fire when index curled while in gun pose
+                    if (isGunPose && isIndexCurled) {
                         STATE.handState.state = 'fired';
                         fireShot();
-                    } else if (!isExtended && fingerLength < 0.06) {
+                    } else if (!isGunPose) {
+                        // Lost gun pose, go back to idle
                         STATE.handState.state = 'idle';
                     }
                     break;
@@ -1035,7 +1065,14 @@
 
                 case 'cooldown':
                     if (now >= STATE.handState.cooldownEnd) {
-                        STATE.handState.state = isExtended ? 'ready' : 'idle';
+                        // Return to ready if still in gun pose with index extended
+                        if (isGunPose && isIndexExtended) {
+                            STATE.handState.state = 'ready';
+                        } else if (isGunPose) {
+                            STATE.handState.state = 'ready';  // Allow re-aim
+                        } else {
+                            STATE.handState.state = 'idle';
+                        }
                     }
                     break;
             }
