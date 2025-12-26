@@ -991,30 +991,29 @@
             if (!STATE.handsData || STATE.handsData.length === 0) {
                 STATE.handState.state = 'idle';
                 if (STATE.crosshair) STATE.crosshair.visible = false;
+                updateHandStatus(false);
                 return;
             }
+
+            // Hand detected!
+            updateHandStatus(true);
 
             const landmarks = STATE.handsData[0];
 
             // Thumb landmarks
             const thumbTip = landmarks[4];
-            const thumbIP = landmarks[3];
             const thumbMCP = landmarks[2];
 
             // Index finger landmarks
             const indexTip = landmarks[8];
             const indexPIP = landmarks[6];
-            const indexMCP = landmarks[5];
 
-            // Wrist for reference
-            const wrist = landmarks[0];
-
-            // Check if thumb is extended (pointing up/out)
+            // Check if thumb is extended (pointing up/out) - RELAXED condition
             const thumbLength = Math.sqrt(
                 Math.pow(thumbTip.x - thumbMCP.x, 2) +
                 Math.pow(thumbTip.y - thumbMCP.y, 2)
             );
-            const isThumbUp = thumbLength > 0.08 && thumbTip.y < thumbMCP.y;
+            const isThumbUp = thumbLength > 0.06;  // More relaxed threshold
 
             // Check index finger extension
             const indexLength = Math.sqrt(
@@ -1022,23 +1021,29 @@
                 Math.pow(indexTip.y - indexPIP.y, 2) +
                 Math.pow(indexTip.z - indexPIP.z, 2)
             );
-            const isIndexExtended = indexLength > CONFIG.GESTURE.EXTEND_THRESHOLD;
-            const isIndexCurled = indexLength < CONFIG.GESTURE.CURL_THRESHOLD;
+            const isIndexExtended = indexLength > 0.06;
+            const isIndexCurled = indexLength < 0.04;
 
             // Gun gesture: thumb up is required
             const isGunPose = isThumbUp;
 
             // Mirror mode crosshair position (use index tip for aiming)
-            const worldX = -(indexTip.x - 0.5) * 30;
-            const worldY = -(indexTip.y - 0.5) * 22;
-            const worldZ = -6;
+            const worldX = -(indexTip.x - 0.5) * 28;
+            const worldY = -(indexTip.y - 0.5) * 20 + 2;
+            const worldZ = 0;  // Closer to camera for visibility
 
-            // Only show crosshair when in gun pose
-            if (isGunPose) {
-                updateCrosshairPosition(worldX, worldY, worldZ);
-                if (STATE.crosshair) STATE.crosshair.visible = true;
-            } else {
-                if (STATE.crosshair) STATE.crosshair.visible = false;
+            // ALWAYS show crosshair when hand is detected
+            updateCrosshairPosition(worldX, worldY, worldZ);
+            if (STATE.crosshair) {
+                STATE.crosshair.visible = true;
+                // Change color based on state: green = gun pose, yellow = hand detected but no gun pose
+                if (isGunPose && isIndexExtended) {
+                    setCrosshairColor(0x00ff00);  // Green - ready to fire
+                } else if (isGunPose) {
+                    setCrosshairColor(0xffff00);  // Yellow - gun pose but finger not extended
+                } else {
+                    setCrosshairColor(0x888888);  // Gray - hand detected, no gun pose
+                }
             }
 
             switch (STATE.handState.state) {
@@ -1075,6 +1080,26 @@
                         }
                     }
                     break;
+            }
+        }
+
+        // Show hand tracking status
+        function updateHandStatus(detected) {
+            let status = document.getElementById('handStatus');
+            if (!status) {
+                status = document.createElement('div');
+                status.id = 'handStatus';
+                status.style.cssText = 'position:fixed;bottom:20px;left:20px;padding:10px 15px;border-radius:8px;font-size:14px;font-weight:bold;z-index:1000;';
+                document.body.appendChild(status);
+            }
+            if (detected) {
+                status.textContent = '✋ 手を検出中';
+                status.style.background = 'rgba(0,255,0,0.8)';
+                status.style.color = '#000';
+            } else {
+                status.textContent = '👆 手を見せてね';
+                status.style.background = 'rgba(255,100,100,0.8)';
+                status.style.color = '#fff';
             }
         }
 
