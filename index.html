@@ -1456,6 +1456,60 @@
 
         // Prevent scroll/zoom
         document.body.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+        // ============================================
+        // TOUCH/CLICK CONTROLS (FALLBACK)
+        // ============================================
+        function handlePointerShoot(clientX, clientY) {
+            if (!STATE.isRunning || STATE.isPaused) return;
+
+            // Convert screen position to NDC (-1 to 1)
+            const ndcX = (clientX / window.innerWidth) * 2 - 1;
+            const ndcY = -(clientY / window.innerHeight) * 2 + 1;
+
+            // Update crosshair position in world space
+            const worldX = ndcX * 15;
+            const worldY = ndcY * 11;
+            const worldZ = -6;
+
+            // Move crosshair to tap position
+            STATE.crosshairCurrentPos.x = worldX;
+            STATE.crosshairCurrentPos.y = worldY;
+            STATE.crosshairCurrentPos.z = worldZ;
+            STATE.crosshairTargetPos.x = worldX;
+            STATE.crosshairTargetPos.y = worldY;
+            STATE.crosshairTargetPos.z = worldZ;
+
+            if (STATE.crosshair) {
+                STATE.crosshair.position.set(worldX, worldY, worldZ);
+                STATE.crosshair.visible = true;
+                STATE.crosshair.lookAt(STATE.camera.position);
+            }
+
+            // Fire!
+            fireShot();
+
+            // Hide crosshair after a moment
+            setTimeout(() => {
+                if (STATE.crosshair && !STATE.modelReady) {
+                    STATE.crosshair.visible = false;
+                }
+            }, 300);
+        }
+
+        // Touch support
+        document.getElementById('gameCanvas').addEventListener('touchstart', e => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            handlePointerShoot(touch.clientX, touch.clientY);
+        }, { passive: false });
+
+        // Mouse/click support
+        document.getElementById('gameCanvas').addEventListener('click', e => {
+            handlePointerShoot(e.clientX, e.clientY);
+        });
+
+        // Prevent double-tap zoom
         let lastTap = 0;
         document.addEventListener('touchend', e => {
             const now = Date.now();
