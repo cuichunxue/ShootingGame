@@ -579,17 +579,52 @@
             try {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 STATE.audioContext = new AudioContext();
-                if (STATE.audioContext.state === 'suspended') {
-                    await STATE.audioContext.resume();
-                }
                 STATE.audioReady = true;
+                console.log('[Audio] Context created, state:', STATE.audioContext.state);
             } catch (e) {
                 console.warn('Audio init failed:', e);
             }
         }
 
+        // Unlock audio on user interaction (required by browsers)
+        async function unlockAudio() {
+            if (!STATE.audioContext) {
+                await initAudio();
+            }
+            if (STATE.audioContext && STATE.audioContext.state === 'suspended') {
+                try {
+                    await STATE.audioContext.resume();
+                    console.log('[Audio] Context resumed, state:', STATE.audioContext.state);
+                    // Play a silent sound to fully unlock
+                    const buffer = STATE.audioContext.createBuffer(1, 1, 22050);
+                    const source = STATE.audioContext.createBufferSource();
+                    source.buffer = buffer;
+                    source.connect(STATE.audioContext.destination);
+                    source.start(0);
+                } catch (e) {
+                    console.warn('[Audio] Resume failed:', e);
+                }
+            }
+        }
+
+        // Add unlock listeners for various user interactions
+        function setupAudioUnlock() {
+            const unlockEvents = ['click', 'touchstart', 'touchend', 'keydown'];
+            const unlockHandler = () => {
+                unlockAudio();
+                // Remove listeners after first interaction
+                unlockEvents.forEach(event => {
+                    document.removeEventListener(event, unlockHandler);
+                });
+            };
+            unlockEvents.forEach(event => {
+                document.addEventListener(event, unlockHandler, { passive: true });
+            });
+        }
+
         // Create noise buffer for explosion sounds
         function createNoiseBuffer(duration) {
+            if (!STATE.audioContext) return null;
             const sampleRate = STATE.audioContext.sampleRate;
             const length = sampleRate * duration;
             const buffer = STATE.audioContext.createBuffer(1, length, sampleRate);
@@ -634,18 +669,20 @@
 
             // Noise burst
             const noiseBuffer = createNoiseBuffer(0.08);
-            const noiseSource = STATE.audioContext.createBufferSource();
-            const noiseGain = STATE.audioContext.createGain();
-            const noiseFilter = STATE.audioContext.createBiquadFilter();
-            noiseSource.buffer = noiseBuffer;
-            noiseSource.connect(noiseFilter);
-            noiseFilter.connect(noiseGain);
-            noiseGain.connect(STATE.audioContext.destination);
-            noiseFilter.type = 'highpass';
-            noiseFilter.frequency.value = 1000;
-            noiseGain.gain.setValueAtTime(0.2, now);
-            noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
-            noiseSource.start(now);
+            if (noiseBuffer) {
+                const noiseSource = STATE.audioContext.createBufferSource();
+                const noiseGain = STATE.audioContext.createGain();
+                const noiseFilter = STATE.audioContext.createBiquadFilter();
+                noiseSource.buffer = noiseBuffer;
+                noiseSource.connect(noiseFilter);
+                noiseFilter.connect(noiseGain);
+                noiseGain.connect(STATE.audioContext.destination);
+                noiseFilter.type = 'highpass';
+                noiseFilter.frequency.value = 1000;
+                noiseGain.gain.setValueAtTime(0.2, now);
+                noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+                noiseSource.start(now);
+            }
         }
 
         // Explosion sound (balloon pop)
@@ -669,19 +706,21 @@
 
             // Noise burst for pop texture
             const noiseBuffer = createNoiseBuffer(0.1);
-            const noiseSource = STATE.audioContext.createBufferSource();
-            const noiseGain = STATE.audioContext.createGain();
-            const noiseFilter = STATE.audioContext.createBiquadFilter();
-            noiseSource.buffer = noiseBuffer;
-            noiseSource.connect(noiseFilter);
-            noiseFilter.connect(noiseGain);
-            noiseGain.connect(STATE.audioContext.destination);
-            noiseFilter.type = 'bandpass';
-            noiseFilter.frequency.value = isCorrect ? 2000 : 800;
-            noiseFilter.Q.value = 1;
-            noiseGain.gain.setValueAtTime(0.15, now);
-            noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-            noiseSource.start(now);
+            if (noiseBuffer) {
+                const noiseSource = STATE.audioContext.createBufferSource();
+                const noiseGain = STATE.audioContext.createGain();
+                const noiseFilter = STATE.audioContext.createBiquadFilter();
+                noiseSource.buffer = noiseBuffer;
+                noiseSource.connect(noiseFilter);
+                noiseFilter.connect(noiseGain);
+                noiseGain.connect(STATE.audioContext.destination);
+                noiseFilter.type = 'bandpass';
+                noiseFilter.frequency.value = isCorrect ? 2000 : 800;
+                noiseFilter.Q.value = 1;
+                noiseGain.gain.setValueAtTime(0.15, now);
+                noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+                noiseSource.start(now);
+            }
         }
 
         // Correct answer celebration sound
@@ -785,20 +824,22 @@
 
             // Whoosh noise
             const noiseBuffer = createNoiseBuffer(0.15);
-            const noiseSource = STATE.audioContext.createBufferSource();
-            const noiseGain = STATE.audioContext.createGain();
-            const noiseFilter = STATE.audioContext.createBiquadFilter();
-            noiseSource.buffer = noiseBuffer;
-            noiseSource.connect(noiseFilter);
-            noiseFilter.connect(noiseGain);
-            noiseGain.connect(STATE.audioContext.destination);
-            noiseFilter.type = 'bandpass';
-            noiseFilter.frequency.setValueAtTime(2000, now);
-            noiseFilter.frequency.linearRampToValueAtTime(500, now + 0.15);
-            noiseFilter.Q.value = 2;
-            noiseGain.gain.setValueAtTime(0.08, now);
-            noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-            noiseSource.start(now);
+            if (noiseBuffer) {
+                const noiseSource = STATE.audioContext.createBufferSource();
+                const noiseGain = STATE.audioContext.createGain();
+                const noiseFilter = STATE.audioContext.createBiquadFilter();
+                noiseSource.buffer = noiseBuffer;
+                noiseSource.connect(noiseFilter);
+                noiseFilter.connect(noiseGain);
+                noiseGain.connect(STATE.audioContext.destination);
+                noiseFilter.type = 'bandpass';
+                noiseFilter.frequency.setValueAtTime(2000, now);
+                noiseFilter.frequency.linearRampToValueAtTime(500, now + 0.15);
+                noiseFilter.Q.value = 2;
+                noiseGain.gain.setValueAtTime(0.08, now);
+                noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                noiseSource.start(now);
+            }
         }
 
         // Combo sound (increasing excitement)
@@ -2119,6 +2160,9 @@
             } catch (e) {
                 STATE.bestScores = [];
             }
+
+            // Setup audio unlock (browsers require user interaction)
+            setupAudioUnlock();
 
             // Auto-start
             setTimeout(startGame, 50);
