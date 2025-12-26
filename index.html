@@ -1832,22 +1832,46 @@
         }
 
         // ============================================
-        // MEDIAPIPE HANDS (OPTIMIZED)
+        // MEDIAPIPE HANDS (IMPROVED STABILITY)
         // ============================================
+        let mediapipeRetries = 0;
+        const MAX_RETRIES = 3;
+
         async function initMediaPipe() {
             try {
-                updateLoadingProgress(20, 'Requesting camera...');
+                updateLoadingProgress(20, 'カメラを起動中...');
 
                 STATE.videoElement = document.getElementById('hiddenVideo');
 
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } }
-                });
+                // Request camera with fallback options
+                let stream;
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } }
+                    });
+                } catch (e) {
+                    console.warn('Front camera failed, trying any camera:', e);
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: { width: { ideal: 320 }, height: { ideal: 240 } }
+                    });
+                }
 
                 STATE.videoElement.srcObject = stream;
-                await STATE.videoElement.play();
 
-                updateLoadingProgress(50, 'Loading hand model...');
+                // Wait for video to actually be playing
+                await new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => reject(new Error('Video timeout')), 10000);
+                    STATE.videoElement.onloadedmetadata = () => {
+                        STATE.videoElement.play().then(() => {
+                            clearTimeout(timeout);
+                            // Wait a bit more for stable frames
+                            setTimeout(resolve, 500);
+                        }).catch(reject);
+                    };
+                    STATE.videoElement.onerror = reject;
+                });
+
+                updateLoadingProgress(50, '手認識モデルを読み込み中...');
 
                 STATE.hands = new Hands({
                     locateFile: (file) => `https://unpkg.com/@mediapipe/hands@0.4.1646424915/${file}`
@@ -1856,17 +1880,46 @@
                 STATE.hands.setOptions({
                     maxNumHands: 1,
                     modelComplexity: 0,
-                    minDetectionConfidence: 0.6,
-                    minTrackingConfidence: 0.5
+                    minDetectionConfidence: 0.5,  // Slightly lower for better detection
+                    minTrackingConfidence: 0.4
                 });
 
                 STATE.hands.onResults(onHandsResults);
 
-                updateLoadingProgress(100, 'Ready!');
+                updateLoadingProgress(80, 'モデルを準備中...');
+
+                // Warm up the model with a test frame - this ensures model is fully loaded
+                await warmUpMediaPipe();
+
+                updateLoadingProgress(100, '準備完了!');
                 STATE.modelReady = true;
+                mediapipeRetries = 0;
+
+                console.log('[MediaPipe] Initialization complete');
 
             } catch (error) {
+                console.error('[MediaPipe] Init failed:', error);
+                mediapipeRetries++;
+
+                if (mediapipeRetries < MAX_RETRIES) {
+                    updateLoadingProgress(20, `再試行中... (${mediapipeRetries}/${MAX_RETRIES})`);
+                    await new Promise(r => setTimeout(r, 1000));
+                    return initMediaPipe();  // Retry
+                }
+
                 throw new Error(`Camera init failed: ${error.message}`);
+            }
+        }
+
+        async function warmUpMediaPipe() {
+            // Send a few frames to warm up the model
+            for (let i = 0; i < 3; i++) {
+                try {
+                    await STATE.hands.send({ image: STATE.videoElement });
+                    await new Promise(r => setTimeout(r, 100));
+                } catch (e) {
+                    console.warn('[MediaPipe] Warmup frame failed:', e);
+                }
             }
         }
 
@@ -3348,17 +3401,38 @@
         // OPTIMIZED: Use RAF for detection too
         let lastDetection = 0;
         const detectionInterval = 1000 / CONFIG.DETECTION_FPS;
+        let detectionErrors = 0;
+        const MAX_DETECTION_ERRORS = 5;
 
         function detectionLoop(timestamp) {
-            if (!STATE.isRunning || STATE.isPaused || !STATE.modelReady) {
+            if (!STATE.isRunning || STATE.isPaused) {
                 if (STATE.isRunning) requestAnimationFrame(detectionLoop);
+                return;
+            }
+
+            // Wait for model and video to be ready
+            if (!STATE.modelReady || !STATE.hands || !STATE.videoElement || STATE.videoElement.readyState < 2) {
+                requestAnimationFrame(detectionLoop);
                 return;
             }
 
             if (timestamp - lastDetection >= detectionInterval) {
                 STATE.hands.send({ image: STATE.videoElement }).then(() => {
                     updateHandGestures();
-                }).catch(e => console.warn('Detection error:', e));
+                    detectionErrors = 0;  // Reset error count on success
+                }).catch(e => {
+                    console.warn('Detection error:', e);
+                    detectionErrors++;
+
+                    // If too many errors, try to recover
+                    if (detectionErrors >= MAX_DETECTION_ERRORS) {
+                        console.warn('[Detection] Too many errors, attempting recovery...');
+                        detectionErrors = 0;
+                        // Reset hand data to show "no hand detected"
+                        STATE.handsData = [];
+                        updateHandStatus(false);
+                    }
+                });
                 lastDetection = timestamp;
             }
 
