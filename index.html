@@ -313,20 +313,7 @@
         <div class="question-display" id="questionDisplay">?</div>
     </div>
 
-    <!-- Start Overlay -->
-    <div id="startOverlay" class="overlay">
-        <h1>🎯 Math Shooting!</h1>
-        <p>
-            Shoot numbers with hand gestures!<br>
-            👉 Point finger → Curl to shoot!<br>
-            <small>Camera needed (never shown)</small>
-        </p>
-        <div class="btn-group">
-            <button class="btn" onclick="startGame('solo')">🎮 Solo</button>
-            <button class="btn" onclick="startGame('duo')">👥 2-Player</button>
-            <button class="btn" onclick="startGame('party')">🎉 Party</button>
-        </div>
-    </div>
+    <!-- Start screen removed - auto-start on load -->
 
     <!-- Loading Overlay -->
     <div id="loadingOverlay" class="overlay hidden">
@@ -412,7 +399,7 @@
 
             // Timing
             lastDetectionTime: 0,
-            detectionInterval: 1000 / 15, // 15 FPS - Faster response
+            detectionInterval: 1000 / 20, // 20 FPS - Smooth movement
             gameStartTime: 0,
             lastRenderTime: 0,
 
@@ -735,14 +722,25 @@
         }
 
         function createTargetMesh() {
-            const geometry = new THREE.SphereGeometry(0.8, 8, 8); // Simplified geometry
-            const material = new THREE.MeshLambertMaterial({ // Lighter than Phong
+            // BALLOON SHAPE: Stretched sphere
+            const geometry = new THREE.SphereGeometry(1, 8, 8);
+            geometry.scale(0.8, 1.0, 0.8); // Elongated vertically like a balloon
+
+            const material = new THREE.MeshLambertMaterial({
                 color: 0x888888,
                 emissive: 0x444444,
                 emissiveIntensity: 0.3
             });
             const mesh = new THREE.Mesh(geometry, material);
 
+            // Balloon string (thin line at bottom)
+            const stringGeometry = new THREE.CylinderGeometry(0.02, 0.02, 1.5, 4);
+            const stringMaterial = new THREE.MeshBasicMaterial({ color: 0x666666 });
+            const string = new THREE.Mesh(stringGeometry, stringMaterial);
+            string.position.y = -1.25; // Below balloon
+            mesh.add(string);
+
+            // Number sprite on balloon
             const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: null }));
             sprite.scale.set(1.5, 1.5, 1);
             mesh.add(sprite);
@@ -821,8 +819,8 @@
                 isAnswer,
                 isStrategy,
                 velocity: new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.03,
-                    (Math.random() - 0.5) * 0.02,
+                    (Math.random() - 0.5) * 0.02, // Slow horizontal drift
+                    0.015 + Math.random() * 0.01, // FLOAT UPWARD like balloons!
                     (Math.random() - 0.5) * 0.01
                 ),
                 sprite: target.userData.sprite,
@@ -855,11 +853,18 @@
 
             STATE.targets.forEach(target => {
                 target.position.add(target.userData.velocity);
-                target.rotation.y += 0.02;
+                target.rotation.y += 0.015; // Gentle spin
 
-                // Bounce
+                // Balloon behavior: float up and wrap around
                 if (Math.abs(target.position.x) > 14) target.userData.velocity.x *= -1;
-                if (target.position.y > 8 || target.position.y < -5) target.userData.velocity.y *= -1;
+
+                // When balloon floats too high, respawn at bottom
+                if (target.position.y > 8) {
+                    target.position.y = -5;
+                } else if (target.position.y < -6) {
+                    target.position.y = 8;
+                }
+
                 if (target.position.z > 5 || target.position.z < -20) target.userData.velocity.z *= -1;
 
                 // VISUAL HINT: Strategy targets pulse PROMINENTLY
@@ -869,15 +874,15 @@
                     target.material.emissiveIntensity = 0.4 + pulse * 0.6; // 0.4 to 1.0
                     // Scale pulsing to make them "breathe"
                     const scalePulse = 1 + pulse * 0.3; // 1.0 to 1.3
-                    target.scale.setScalar(scalePulse);
+                    target.scale.set(0.8 * scalePulse, 1.0 * scalePulse, 0.8 * scalePulse);
                 } else if (target.userData.isAnswer) {
                     // Answer targets glow steadily
                     target.material.emissiveIntensity = 0.6;
-                    target.scale.setScalar(1.0);
+                    target.scale.set(0.8, 1.0, 0.8);
                 } else {
                     // Wrong targets stay dim
                     target.material.emissiveIntensity = 0.3;
-                    target.scale.setScalar(1.0);
+                    target.scale.set(0.8, 1.0, 0.8);
                 }
             });
         }
@@ -894,15 +899,15 @@
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: 'user',
-                        width: { ideal: 480 }, // Lower resolution for performance
-                        height: { ideal: 360 }
+                        width: { ideal: 320 }, // Even lower for faster loading
+                        height: { ideal: 240 }
                     }
                 });
 
                 STATE.videoElement.srcObject = stream;
                 await STATE.videoElement.play();
 
-                updateLoadingProgress(50, 'Loading hand model...');
+                updateLoadingProgress(60, 'Loading hand model...');
 
                 STATE.hands = new Hands({
                     locateFile: (file) => {
@@ -911,17 +916,13 @@
                 });
 
                 STATE.hands.setOptions({
-                    maxNumHands: 2,
-                    modelComplexity: 0, // Lightest model for mobile
-                    minDetectionConfidence: 0.6,
+                    maxNumHands: 1, // SOLO - only need 1 hand
+                    modelComplexity: 0, // Lightest model
+                    minDetectionConfidence: 0.5, // Lower for faster detection
                     minTrackingConfidence: 0.5
                 });
 
                 STATE.hands.onResults(onHandsResults);
-
-                updateLoadingProgress(80, 'Initializing model...');
-
-                await new Promise(resolve => setTimeout(resolve, 300));
 
                 updateLoadingProgress(100, 'Ready!');
 
@@ -1083,8 +1084,8 @@
         function fireShot(origin, direction, handIndex) {
             playSFX('shoot');
 
-            const playerIndex = STATE.gameMode === 'duo' ? handIndex : 0;
-            STATE.players[playerIndex].shots++;
+            // SOLO ONLY - always player 0
+            STATE.players[0].shots++;
 
             createMuzzleFlash(origin);
 
@@ -1093,9 +1094,9 @@
 
             if (intersects.length > 0) {
                 const hit = intersects[0].object;
-                handleTargetHit(hit, playerIndex);
+                handleTargetHit(hit, 0);
             } else {
-                showFeedback(`${STATE.players[playerIndex].name} MISS`, '#888888');
+                showFeedback('MISS', '#888888');
                 playSFX('miss');
             }
         }
@@ -1106,49 +1107,49 @@
             releaseTarget(target);
             STATE.targets = STATE.targets.filter(t => t !== target);
 
-            STATE.players[playerIndex].hits++;
+            STATE.players[0].hits++;
 
             createExplosion(target.position, isAnswer ? 0x4CAF50 : isStrategy ? 0xFFD700 : 0xff4444);
 
             if (isAnswer) {
-                STATE.players[playerIndex].score += CONFIG.SCORE_CORRECT;
-                STATE.players[playerIndex].streak++;
-                STATE.players[playerIndex].bestStreak = Math.max(
-                    STATE.players[playerIndex].bestStreak,
-                    STATE.players[playerIndex].streak
+                STATE.players[0].score += CONFIG.SCORE_CORRECT;
+                STATE.players[0].streak++;
+                STATE.players[0].bestStreak = Math.max(
+                    STATE.players[0].bestStreak,
+                    STATE.players[0].streak
                 );
 
-                showFeedback(`${STATE.players[playerIndex].name} CORRECT! +${CONFIG.SCORE_CORRECT}`, '#4CAF50');
+                showFeedback(`CORRECT! +${CONFIG.SCORE_CORRECT}`, '#4CAF50');
                 playSFX('correct');
 
                 // Adaptive difficulty
-                if (STATE.players[playerIndex].streak >= 5 && STATE.difficultyLevel < 4) {
+                if (STATE.players[0].streak >= 5 && STATE.difficultyLevel < 4) {
                     STATE.difficultyLevel++;
                 }
 
                 nextQuestion();
 
             } else if (isStrategy) {
-                STATE.players[playerIndex].score += CONFIG.SCORE_SMART;
-                STATE.players[playerIndex].streak++;
-                STATE.players[playerIndex].bestStreak = Math.max(
-                    STATE.players[playerIndex].bestStreak,
-                    STATE.players[playerIndex].streak
+                STATE.players[0].score += CONFIG.SCORE_SMART;
+                STATE.players[0].streak++;
+                STATE.players[0].bestStreak = Math.max(
+                    STATE.players[0].bestStreak,
+                    STATE.players[0].streak
                 );
 
-                showFeedback(`${STATE.players[playerIndex].name} SMART! +${CONFIG.SCORE_SMART}`, '#FFD700');
+                showFeedback(`SMART! +${CONFIG.SCORE_SMART}`, '#FFD700');
                 playSFX('smart'); // Better sound for smart strategy
 
             } else {
-                STATE.players[playerIndex].score = Math.max(0, STATE.players[playerIndex].score - CONFIG.PENALTY_WRONG);
+                STATE.players[0].score = Math.max(0, STATE.players[0].score - CONFIG.PENALTY_WRONG);
                 // Gentle streak drop: only decrease by 1
-                STATE.players[playerIndex].streak = Math.max(0, STATE.players[playerIndex].streak - 1);
+                STATE.players[0].streak = Math.max(0, STATE.players[0].streak - 1);
 
-                showFeedback(`${STATE.players[playerIndex].name} WRONG -${CONFIG.PENALTY_WRONG}`, '#ff4444');
+                showFeedback(`WRONG -${CONFIG.PENALTY_WRONG}`, '#ff4444');
                 playSFX('wrong');
 
                 // Reduce difficulty after mistakes
-                if (STATE.players[playerIndex].streak === 0 && STATE.difficultyLevel > 1) {
+                if (STATE.players[0].streak === 0 && STATE.difficultyLevel > 1) {
                     STATE.difficultyLevel = Math.max(1, STATE.difficultyLevel - 1);
                 }
             }
@@ -1246,24 +1247,21 @@
             const playerScores = document.getElementById('playerScores');
             playerScores.innerHTML = '';
 
-            const activePlayers = STATE.gameMode === 'duo' ? 2 : 1;
+            // SOLO ONLY - Single player display
+            const p = STATE.players[0];
+            p.accuracy = p.shots > 0 ? Math.round((p.hits / p.shots) * 100) : 0;
 
-            for (let i = 0; i < activePlayers; i++) {
-                const p = STATE.players[i];
-                p.accuracy = p.shots > 0 ? Math.round((p.hits / p.shots) * 100) : 0;
+            const div = document.createElement('div');
+            div.className = 'player-score p1';
 
-                const div = document.createElement('div');
-                div.className = `player-score p${i + 1}`;
-
-                if (p.streak >= 5) {
-                    div.classList.add('streak-glow');
-                }
-
-                div.innerHTML = `
-                    ${p.name}: ${p.score} | 🔥 ${p.streak} | 🎯 ${p.accuracy}%
-                `;
-                playerScores.appendChild(div);
+            if (p.streak >= 5) {
+                div.classList.add('streak-glow');
             }
+
+            div.innerHTML = `
+                Score: ${p.score} | 🔥 ${p.streak} | 🎯 ${p.accuracy}%
+            `;
+            playerScores.appendChild(div);
 
             if (STATE.currentQuestion) {
                 document.getElementById('questionDisplay').textContent = STATE.currentQuestion.question;
@@ -1293,18 +1291,15 @@
             try {
                 const scores = JSON.parse(localStorage.getItem('mathShootingBestScores') || '[]');
 
-                const activePlayers = STATE.gameMode === 'duo' ? 2 : 1;
-
-                for (let i = 0; i < activePlayers; i++) {
-                    const p = STATE.players[i];
-                    scores.push({
-                        name: p.name,
-                        score: p.score,
-                        streak: p.bestStreak,
-                        accuracy: p.accuracy,
-                        date: new Date().toISOString()
-                    });
-                }
+                // SOLO ONLY - single player
+                const p = STATE.players[0];
+                scores.push({
+                    name: 'You',
+                    score: p.score,
+                    streak: p.bestStreak,
+                    accuracy: p.accuracy,
+                    date: new Date().toISOString()
+                });
 
                 scores.sort((a, b) => b.score - a.score || b.streak - a.streak || b.accuracy - a.accuracy);
 
@@ -1320,19 +1315,21 @@
             const ranking = document.getElementById('rankingDisplay');
             ranking.innerHTML = '';
 
-            const activePlayers = STATE.gameMode === 'duo' ? 2 : 1;
-
-            const currentPlayers = STATE.players.slice(0, activePlayers)
-                .map((p, i) => ({ ...p, index: i, current: true }))
-                .sort((a, b) => b.score - a.score || b.bestStreak - a.bestStreak || b.accuracy - a.accuracy);
+            // SOLO ONLY - simple current score + best scores
+            const currentScore = {
+                name: 'You',
+                score: STATE.players[0].score,
+                streak: STATE.players[0].bestStreak,
+                accuracy: STATE.players[0].accuracy,
+                current: true
+            };
 
             const allBest = STATE.bestScores.slice(0, 5);
 
             // Merge current with all-time
-            const display = [...currentPlayers];
-
+            const display = [currentScore];
             allBest.forEach(best => {
-                if (!display.some(p => p.score === best.score && p.name === best.name)) {
+                if (!display.some(p => p.score === best.score)) {
                     display.push(best);
                 }
             });
@@ -1346,7 +1343,7 @@
 
                 entry.innerHTML = `
                     <span>${medal} ${p.name}</span>
-                    <span>${p.score} pts | 🔥 ${p.bestStreak || p.streak} | 🎯 ${p.accuracy}%</span>
+                    <span>${p.score} pts | 🔥 ${p.streak} | 🎯 ${p.accuracy}%</span>
                 `;
                 ranking.appendChild(entry);
             });
@@ -1408,7 +1405,7 @@
         // ============================================
         async function startGame(mode) {
             try {
-                STATE.gameMode = mode;
+                STATE.gameMode = 'solo'; // SOLO ONLY
 
                 showOverlay('loadingOverlay');
                 updateLoadingProgress(0, 'Starting...');
@@ -1425,26 +1422,21 @@
                     await initMediaPipe();
                 }
 
-                updateLoadingProgress(100, 'Ready!');
-                await new Promise(resolve => setTimeout(resolve, 200));
-
-                // Reset
+                // Reset immediately - no delay
                 STATE.questionIndex = 0;
                 STATE.timeLeft = CONFIG.TIME_LIMIT;
                 STATE.difficultyLevel = 1;
                 STATE.handStates = [
-                    { state: 'idle', handedness: null, lastPos: null, cooldownEnd: 0, landmarkIndex: null },
                     { state: 'idle', handedness: null, lastPos: null, cooldownEnd: 0, landmarkIndex: null }
                 ];
 
-                STATE.players.forEach(p => {
-                    p.score = 0;
-                    p.streak = 0;
-                    p.bestStreak = 0;
-                    p.accuracy = 0;
-                    p.shots = 0;
-                    p.hits = 0;
-                });
+                // SOLO - only reset player 0
+                STATE.players[0].score = 0;
+                STATE.players[0].streak = 0;
+                STATE.players[0].bestStreak = 0;
+                STATE.players[0].accuracy = 0;
+                STATE.players[0].shots = 0;
+                STATE.players[0].hits = 0;
 
                 STATE.currentQuestion = generateQuestion();
                 spawnTargets();
@@ -1501,7 +1493,7 @@
         });
 
         // ============================================
-        // INITIALIZATION
+        // INITIALIZATION - AUTO START
         // ============================================
         window.addEventListener('load', () => {
             console.log('✅ Math Shooting Game loaded!');
@@ -1512,6 +1504,9 @@
             } catch (e) {
                 STATE.bestScores = [];
             }
+
+            // AUTO-START GAME (Solo mode only) - instant start
+            setTimeout(() => startGame('solo'), 100);
         });
 
         // Prevent scroll/bounce
