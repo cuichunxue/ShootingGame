@@ -1381,6 +1381,13 @@
         const STABLE_THRESHOLD = 0.015;  // Max movement to be considered "stable"
         const MIN_STABLE_FRAMES = 3;  // Need to be stable for 3 frames before flick counts
 
+        // Position smoothing for stable crosshair
+        let positionHistory = [];
+        const POSITION_HISTORY_SIZE = 8;  // Average over 8 frames
+        let smoothedX = 0;
+        let smoothedY = 0;
+        let lastIntentionalMoveTime = 0;
+
         function updateHandGestures() {
             const now = performance.now();
 
@@ -1452,24 +1459,69 @@
 
             // Mirror mode crosshair position (use index tip for aiming)
             // Reduced range to match visible balloon area
-            const rawX = -(indexTip.x - 0.5) * 22;  // Reduced from 28
-            const rawY = -(indexTip.y - 0.5) * 16 + 1.5;  // Reduced from 20
+            const rawX = -(indexTip.x - 0.5) * 22;
+            const rawY = -(indexTip.y - 0.5) * 16 + 1.5;
             const worldZ = 0;
 
-            // Apply deadzone - ignore very small movements for stability
-            const DEADZONE = 0.3;  // Minimum movement to register
-            const dx = rawX - STATE.crosshairTargetPos.x;
-            const dy = rawY - STATE.crosshairTargetPos.y;
+            // Add to position history for averaging
+            positionHistory.push({ x: rawX, y: rawY, time: now });
+            if (positionHistory.length > POSITION_HISTORY_SIZE) {
+                positionHistory.shift();
+            }
+
+            // Calculate averaged position (removes jitter)
+            let avgX = 0, avgY = 0;
+            positionHistory.forEach(p => {
+                avgX += p.x;
+                avgY += p.y;
+            });
+            avgX /= positionHistory.length;
+            avgY /= positionHistory.length;
+
+            // Calculate movement from current smoothed position
+            const dx = avgX - smoothedX;
+            const dy = avgY - smoothedY;
             const distance = Math.sqrt(dx * dx + dy * dy);
 
-            let worldX = STATE.crosshairTargetPos.x;
-            let worldY = STATE.crosshairTargetPos.y;
-
-            if (distance > DEADZONE) {
-                // Move towards target, but apply extra smoothing
-                worldX = rawX;
-                worldY = rawY;
+            // Calculate movement speed (to detect intentional vs unconscious movement)
+            let positionVariance = 0;
+            if (positionHistory.length >= 3) {
+                // Check how much the position varies in recent history
+                const recentPositions = positionHistory.slice(-3);
+                const centerX = recentPositions.reduce((a, p) => a + p.x, 0) / 3;
+                const centerY = recentPositions.reduce((a, p) => a + p.y, 0) / 3;
+                recentPositions.forEach(p => {
+                    positionVariance += Math.sqrt((p.x - centerX) ** 2 + (p.y - centerY) ** 2);
+                });
+                positionVariance /= 3;
             }
+
+            // Deadzone and intentional movement detection
+            const DEADZONE = 0.8;  // Increased deadzone for stability
+            const JITTER_THRESHOLD = 0.15;  // If variance is low, it's intentional
+            const isIntentionalMove = distance > DEADZONE && positionVariance < JITTER_THRESHOLD;
+            const isLargeMove = distance > 2.0;  // Large movements are always intentional
+
+            let worldX = smoothedX;
+            let worldY = smoothedY;
+
+            if (isIntentionalMove || isLargeMove) {
+                // Intentional movement: smoothly move towards target
+                const moveSpeed = isLargeMove ? 0.5 : 0.3;
+                smoothedX += dx * moveSpeed;
+                smoothedY += dy * moveSpeed;
+                worldX = smoothedX;
+                worldY = smoothedY;
+                lastIntentionalMoveTime = now;
+            } else if (now - lastIntentionalMoveTime > 200) {
+                // If no intentional movement for 200ms, slowly drift towards averaged position
+                // This helps recover from accumulated drift
+                smoothedX += dx * 0.05;
+                smoothedY += dy * 0.05;
+                worldX = smoothedX;
+                worldY = smoothedY;
+            }
+            // Otherwise, keep crosshair at current position (stable)
 
             // ALWAYS show crosshair when hand is detected
             updateCrosshairPosition(worldX, worldY, worldZ);
