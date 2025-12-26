@@ -2256,8 +2256,10 @@
                     playLevelUpSound();
                 }
 
-                currentEvent = EVENTS.NORMAL;  // Reset event after correct answer
-                nextQuestion();
+                // Handle event logic or move to next question
+                if (!handleEventHit(true)) {
+                    nextQuestion();
+                }
 
             } else if (isStrategy) {
                 const points = Math.floor(CONFIG.SCORE_SMART * multiplier);
@@ -2310,6 +2312,9 @@
                 if (STATE.player.streak === 0 && STATE.difficultyLevel > 1) {
                     STATE.difficultyLevel--;
                 }
+
+                // Handle event logic for wrong answer
+                handleEventHit(false);
             }
 
             updateHUD();
@@ -2659,69 +2664,417 @@
             }
         }
 
-        // Trigger random events
+        // ============================================
+        // ENHANCED EVENT SYSTEM
+        // ============================================
+        let eventState = {
+            questionsRemaining: 0,
+            correctInEvent: 0,
+            eventStartTime: 0,
+            targetCategory: null
+        };
+
+        // Trigger random events - MORE INTERESTING!
         function triggerRandomEvent() {
-            const rand = Math.random();
-            if (rand < 0.15) {
-                currentEvent = EVENTS.BONUS;
-                showFeedback('✨ BONUS TIME!', '#ffd700');
-                playSFX('levelup');
-            } else if (rand < 0.25) {
-                currentEvent = EVENTS.SPEED;
-                showFeedback('⚡ SPEED ROUND!', '#ff6600');
-            } else if (rand < 0.30) {
-                currentEvent = EVENTS.GOLDEN;
-                showFeedback('🌟 GOLDEN TARGET!', '#ffd700');
-            } else {
-                currentEvent = EVENTS.NORMAL;
+            const events = ['rapidfire', 'skilltest', 'combo', 'frenzy'];
+            const event = events[Math.floor(Math.random() * events.length)];
+
+            switch(event) {
+                case 'rapidfire':
+                    startRapidFireEvent();
+                    break;
+                case 'skilltest':
+                    startSkillTestEvent();
+                    break;
+                case 'combo':
+                    startComboEvent();
+                    break;
+                case 'frenzy':
+                    startFrenzyEvent();
+                    break;
             }
         }
 
-        // Boss battle event
-        function triggerBossEvent() {
-            currentEvent = EVENTS.BOSS;
-            bossHealth = 3 + currentWorld;  // More HP in later worlds
-            showFeedback('👹 BOSS BATTLE!', '#ff0000');
+        // 🔥 RAPID FIRE: 5 questions, many targets, fast pace!
+        function startRapidFireEvent() {
+            currentEvent = EVENTS.BONUS;
+            eventState.questionsRemaining = 5;
+            eventState.correctInEvent = 0;
+            eventState.eventStartTime = performance.now();
+
+            showFeedback('🔥 RAPID FIRE! 5問連続!', '#ff6600');
             playSFX('levelup');
-            // Spawn boss target
-            spawnBossTarget();
+
+            // Generate first rapid fire question
+            STATE.currentQuestion = generateQuestion();
+            spawnRapidFireTargets();
+            updateHUD();
         }
 
-        function spawnBossTarget() {
-            // Clear existing targets
-            STATE.targets.forEach(t => {
-                t.visible = false;
-            });
+        function spawnRapidFireTargets() {
+            // Clear existing
+            STATE.targets.forEach(t => t.visible = false);
             STATE.targets = [];
 
-            // Create boss - a big balloon with the answer
+            const q = STATE.currentQuestion;
+            // Spawn 6-8 targets with multiple correct answers mixed in
+            const targetCount = 6 + Math.floor(Math.random() * 3);
+
+            for (let i = 0; i < targetCount; i++) {
+                const target = getTarget();
+                if (!target) continue;
+
+                // 30% chance to be correct answer
+                const isCorrect = i < 2 || Math.random() < 0.3;
+                const number = isCorrect ? q.answer : q.allNumbers[Math.floor(Math.random() * q.allNumbers.length)];
+
+                const color = BALLOON_COLORS[Math.floor(Math.random() * BALLOON_COLORS.length)];
+                target.material.color.setHex(color);
+                target.material.emissive.setHex(color);
+                target.material.emissiveIntensity = 0.4;
+
+                // Spread across screen
+                const x = (Math.random() - 0.5) * 18;
+                const y = -3 + Math.random() * 8;
+                target.position.set(x, y, -8 - Math.random() * 4);
+                target.scale.set(0.8, 1.0, 0.8);
+
+                const sprite = target.userData.sprite;
+                sprite.material.map = getNumberTexture(number);
+                sprite.material.needsUpdate = true;
+                sprite.scale.set(1.8, 1.8, 1);
+
+                target.userData = {
+                    number,
+                    isAnswer: number === q.answer,
+                    isStrategy: false,
+                    velocity: new THREE.Vector3(
+                        (Math.random() - 0.5) * 0.03,
+                        0.015 + Math.random() * 0.015,
+                        (Math.random() - 0.5) * 0.01
+                    ),
+                    sprite,
+                    pulsePhase: Math.random() * Math.PI * 2
+                };
+
+                target.visible = true;
+                STATE.targets.push(target);
+            }
+        }
+
+        // 📊 SKILL TEST: 3 questions from one category to measure skill
+        function startSkillTestEvent() {
+            currentEvent = EVENTS.GOLDEN;
+            eventState.questionsRemaining = 3;
+            eventState.correctInEvent = 0;
+
+            // Pick the category with lowest skill for practice
+            const categories = Object.entries(SKILL_CATEGORIES);
+            categories.sort((a, b) => a[1].level - b[1].level);
+            eventState.targetCategory = categories[0][0];
+
+            const catNames = {
+                addition: '足し算', subtraction: '引き算',
+                multiplication: '掛け算', division: '割り算', units: '単位'
+            };
+
+            showFeedback(`📊 ${catNames[eventState.targetCategory]}テスト! 3問`, '#00ffff');
+            playSFX('levelup');
+
+            // Generate question from target category
+            generateSkillTestQuestion();
+            spawnTargets();
+            updateHUD();
+        }
+
+        function generateSkillTestQuestion() {
+            const cat = eventState.targetCategory;
+            const skillLevel = SKILL_CATEGORIES[cat].level;
+
+            // Get questions from this category at appropriate level
+            let available = QUESTION_TEMPLATES.filter(t =>
+                t.category === cat &&
+                t.skillLevel >= skillLevel - 1 &&
+                t.skillLevel <= skillLevel + 2
+            );
+
+            if (available.length === 0) {
+                available = QUESTION_TEMPLATES.filter(t => t.category === cat);
+            }
+
+            const template = available[Math.floor(Math.random() * available.length)];
+            const q = template.generate();
+            q.questionType = template.type;
+
+            // Generate distractors
+            const distractors = new Set();
+            let attempts = 0;
+            while (distractors.size < 3 && attempts < 20) {
+                attempts++;
+                let d;
+                if (q.answer >= 1000) {
+                    const mult = [100, 500, 1000, 1500, 2000, 2500, 3000];
+                    d = mult[Math.floor(Math.random() * mult.length)];
+                } else if (q.answer >= 100) {
+                    d = Math.max(10, q.answer + (Math.floor(Math.random() * 5) - 2) * 50);
+                } else {
+                    d = Math.max(1, q.answer + Math.floor(Math.random() * 10) - 5);
+                }
+                if (d !== q.answer && d > 0) distractors.add(d);
+            }
+
+            q.allNumbers = [q.answer, ...Array.from(distractors)].slice(0, 5);
+            STATE.currentQuestion = q;
+        }
+
+        // 🎯 COMBO CHALLENGE: Get 5 correct in a row!
+        function startComboEvent() {
+            currentEvent = EVENTS.SPEED;
+            eventState.questionsRemaining = 5;
+            eventState.correctInEvent = 0;
+
+            showFeedback('🎯 COMBO! 5連続正解せよ!', '#ff00ff');
+            playSFX('levelup');
+
+            STATE.currentQuestion = generateQuestion();
+            spawnTargets();
+            updateHUD();
+        }
+
+        // 🌟 FRENZY: Many small targets, hit all correct ones!
+        function startFrenzyEvent() {
+            currentEvent = EVENTS.FRENZY;
+            eventState.questionsRemaining = 1;
+            eventState.correctInEvent = 0;
+
+            showFeedback('🌟 FRENZY! 正解を全部撃て!', '#ffd700');
+            playSFX('levelup');
+
+            STATE.currentQuestion = generateQuestion();
+            spawnFrenzyTargets();
+            updateHUD();
+        }
+
+        function spawnFrenzyTargets() {
+            STATE.targets.forEach(t => t.visible = false);
+            STATE.targets = [];
+
+            const q = STATE.currentQuestion;
+            // Spawn 10-12 targets, 4-5 are correct
+            const correctCount = 4 + Math.floor(Math.random() * 2);
+            const wrongCount = 6 + Math.floor(Math.random() * 3);
+
+            // Spawn correct answers
+            for (let i = 0; i < correctCount; i++) {
+                spawnFrenzyTarget(q.answer, true);
+            }
+            // Spawn wrong answers
+            for (let i = 0; i < wrongCount; i++) {
+                const wrongNum = q.allNumbers.find(n => n !== q.answer) ||
+                    q.answer + Math.floor(Math.random() * 5) - 2;
+                spawnFrenzyTarget(wrongNum, false);
+            }
+        }
+
+        function spawnFrenzyTarget(number, isCorrect) {
             const target = getTarget();
             if (!target) return;
 
-            target.material.color.setHex(0xff0000);
-            target.material.emissive.setHex(0xff0000);
-            target.material.emissiveIntensity = 0.8;
+            const color = BALLOON_COLORS[Math.floor(Math.random() * BALLOON_COLORS.length)];
+            target.material.color.setHex(color);
+            target.material.emissive.setHex(color);
+            target.material.emissiveIntensity = 0.3;
 
-            target.position.set(0, 2, -10);
-            target.scale.set(2.5, 3, 2.5);  // Big boss!
+            const x = (Math.random() - 0.5) * 18;
+            const y = -4 + Math.random() * 9;
+            target.position.set(x, y, -7 - Math.random() * 5);
+            target.scale.set(0.7, 0.85, 0.7);  // Small targets
 
             const sprite = target.userData.sprite;
-            sprite.material.map = getNumberTexture(STATE.currentQuestion.answer);
+            sprite.material.map = getNumberTexture(number);
             sprite.material.needsUpdate = true;
-            sprite.scale.set(3, 3, 1);
+            sprite.scale.set(1.5, 1.5, 1);
 
             target.userData = {
-                number: STATE.currentQuestion.answer,
-                isAnswer: true,
+                number,
+                isAnswer: isCorrect,
                 isStrategy: false,
-                isBoss: true,
-                velocity: new THREE.Vector3(0.02, 0, 0),
+                isFrenzy: true,
+                velocity: new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.025,
+                    0.01 + Math.random() * 0.02,
+                    (Math.random() - 0.5) * 0.015
+                ),
                 sprite,
-                pulsePhase: 0
+                pulsePhase: Math.random() * Math.PI * 2
             };
 
             target.visible = true;
             STATE.targets.push(target);
+        }
+
+        // Boss battle event - Enhanced!
+        function triggerBossEvent() {
+            currentEvent = EVENTS.BOSS;
+            bossHealth = 3 + currentWorld;
+            eventState.correctInEvent = 0;
+
+            showFeedback('👹 BOSS BATTLE!', '#ff0000');
+            playSFX('levelup');
+            spawnBossWithMinions();
+        }
+
+        function spawnBossWithMinions() {
+            STATE.targets.forEach(t => t.visible = false);
+            STATE.targets = [];
+
+            const q = STATE.currentQuestion;
+
+            // Spawn boss (correct answer)
+            const boss = getTarget();
+            if (boss) {
+                boss.material.color.setHex(0xff0000);
+                boss.material.emissive.setHex(0xff0000);
+                boss.material.emissiveIntensity = 0.8;
+                boss.position.set(0, 2, -10);
+                boss.scale.set(2.2, 2.8, 2.2);
+
+                const sprite = boss.userData.sprite;
+                sprite.material.map = getNumberTexture(q.answer);
+                sprite.material.needsUpdate = true;
+                sprite.scale.set(2.5, 2.5, 1);
+
+                boss.userData = {
+                    number: q.answer,
+                    isAnswer: true,
+                    isBoss: true,
+                    velocity: new THREE.Vector3(0.015, 0.008, 0),
+                    sprite,
+                    pulsePhase: 0
+                };
+                boss.visible = true;
+                STATE.targets.push(boss);
+            }
+
+            // Spawn 2-3 minions (wrong answers) that block the boss
+            const minionCount = 2 + Math.floor(Math.random() * 2);
+            for (let i = 0; i < minionCount; i++) {
+                const minion = getTarget();
+                if (!minion) continue;
+
+                const wrongNum = q.allNumbers.find(n => n !== q.answer) || q.answer + i + 1;
+                const color = BALLOON_COLORS[Math.floor(Math.random() * BALLOON_COLORS.length)];
+                minion.material.color.setHex(color);
+                minion.material.emissive.setHex(color);
+                minion.material.emissiveIntensity = 0.3;
+
+                const angle = (i / minionCount) * Math.PI * 2;
+                minion.position.set(Math.cos(angle) * 4, 1 + Math.sin(angle) * 2, -8);
+                minion.scale.set(1, 1.2, 1);
+
+                const sprite = minion.userData.sprite;
+                sprite.material.map = getNumberTexture(wrongNum);
+                sprite.material.needsUpdate = true;
+                sprite.scale.set(1.8, 1.8, 1);
+
+                minion.userData = {
+                    number: wrongNum,
+                    isAnswer: false,
+                    isMinion: true,
+                    velocity: new THREE.Vector3(
+                        (Math.random() - 0.5) * 0.02,
+                        (Math.random() - 0.5) * 0.015,
+                        0
+                    ),
+                    sprite,
+                    pulsePhase: Math.random() * Math.PI * 2
+                };
+                minion.visible = true;
+                STATE.targets.push(minion);
+            }
+        }
+
+        // Handle event completion
+        function handleEventHit(isCorrect) {
+            if (currentEvent === EVENTS.NORMAL) return false;
+
+            if (isCorrect) {
+                eventState.correctInEvent++;
+            }
+
+            // RAPID FIRE: continue to next question
+            if (currentEvent === EVENTS.BONUS && eventState.questionsRemaining > 0) {
+                eventState.questionsRemaining--;
+                if (eventState.questionsRemaining > 0) {
+                    STATE.currentQuestion = generateQuestion();
+                    spawnRapidFireTargets();
+                    updateHUD();
+                    return true;
+                } else {
+                    // Event complete!
+                    const bonus = eventState.correctInEvent * 50;
+                    showFeedback(`🔥 RAPID完了! +${bonus}`, '#ff6600');
+                    STATE.player.score += bonus;
+                    currentEvent = EVENTS.NORMAL;
+                }
+            }
+
+            // SKILL TEST: continue to next question
+            if (currentEvent === EVENTS.GOLDEN && eventState.questionsRemaining > 0) {
+                eventState.questionsRemaining--;
+                if (eventState.questionsRemaining > 0 && isCorrect) {
+                    generateSkillTestQuestion();
+                    spawnTargets();
+                    updateHUD();
+                    return true;
+                } else {
+                    // Event complete - update skill more aggressively
+                    const cat = eventState.targetCategory;
+                    if (eventState.correctInEvent >= 2) {
+                        SKILL_CATEGORIES[cat].level = Math.min(10, SKILL_CATEGORIES[cat].level + 1);
+                        showFeedback(`📊 ${cat} UP! Lv${SKILL_CATEGORIES[cat].level}`, '#00ffff');
+                    } else if (eventState.correctInEvent === 0) {
+                        SKILL_CATEGORIES[cat].level = Math.max(1, SKILL_CATEGORIES[cat].level - 1);
+                    }
+                    currentEvent = EVENTS.NORMAL;
+                }
+            }
+
+            // COMBO: must get all correct in a row
+            if (currentEvent === EVENTS.SPEED) {
+                if (!isCorrect) {
+                    showFeedback('💔 COMBO BREAK!', '#ff0000');
+                    currentEvent = EVENTS.NORMAL;
+                } else {
+                    eventState.questionsRemaining--;
+                    if (eventState.questionsRemaining > 0) {
+                        STATE.currentQuestion = generateQuestion();
+                        spawnTargets();
+                        updateHUD();
+                        return true;
+                    } else {
+                        // Combo complete!
+                        const bonus = 300;
+                        showFeedback(`🎯 PERFECT COMBO! +${bonus}`, '#ff00ff');
+                        STATE.player.score += bonus;
+                        currentEvent = EVENTS.NORMAL;
+                    }
+                }
+            }
+
+            // FRENZY: check if all correct targets hit
+            if (currentEvent === EVENTS.FRENZY) {
+                const correctRemaining = STATE.targets.filter(t => t.visible && t.userData.isAnswer).length;
+                if (correctRemaining === 0) {
+                    const bonus = eventState.correctInEvent * 30;
+                    showFeedback(`🌟 FRENZY完了! +${bonus}`, '#ffd700');
+                    STATE.player.score += bonus;
+                    currentEvent = EVENTS.NORMAL;
+                }
+                return false;  // Don't advance question in frenzy
+            }
+
+            return false;
         }
 
         function nextQuestion() {
@@ -2733,12 +3086,13 @@
                 return;
             }
 
-            // Random events (every 3-4 questions)
+            // Random events (every 3 questions)
             if (STATE.questionIndex > 0 && STATE.questionIndex % 3 === 0) {
                 triggerRandomEvent();
+                return;  // Event handles its own questions
             }
 
-            // Boss at end of each stage (question 7 of 8)
+            // Boss at end of each stage
             if (STATE.questionIndex === CONFIG.QUESTIONS_PER_STAGE - 1) {
                 STATE.currentQuestion = generateQuestion();
                 triggerBossEvent();
