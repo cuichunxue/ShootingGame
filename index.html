@@ -412,7 +412,7 @@
 
             // Timing
             lastDetectionTime: 0,
-            detectionInterval: 1000 / 12, // 12 FPS
+            detectionInterval: 1000 / 8, // 8 FPS - Optimized for mobile
             gameStartTime: 0,
             lastRenderTime: 0,
 
@@ -439,10 +439,10 @@
                 COOLDOWN_MS: 250
             },
 
-            // Performance
-            MAX_TARGETS: 8,
-            TARGET_POOL_SIZE: 20,
-            PARTICLE_POOL_SIZE: 200,
+            // Performance - OPTIMIZED FOR MOBILE
+            MAX_TARGETS: 5,
+            TARGET_POOL_SIZE: 10,
+            PARTICLE_POOL_SIZE: 30,
 
             // Game
             QUESTIONS_PER_ROUND: 10,
@@ -671,7 +671,7 @@
 
             STATE.scene = new THREE.Scene();
             STATE.scene.background = new THREE.Color(0x0a0a1a);
-            STATE.scene.fog = new THREE.Fog(0x0a0a1a, 15, 50);
+            // Fog removed for performance
 
             STATE.camera = new THREE.PerspectiveCamera(
                 75,
@@ -684,24 +684,23 @@
 
             STATE.renderer = new THREE.WebGLRenderer({
                 canvas,
-                antialias: true,
+                antialias: false, // Disabled for performance
                 powerPreference: 'high-performance'
             });
             STATE.renderer.setSize(window.innerWidth, window.innerHeight);
-            STATE.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            STATE.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Lower pixel ratio
 
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            // Simplified lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
             STATE.scene.add(ambientLight);
 
-            const pointLight1 = new THREE.PointLight(0x667eea, 1, 50);
-            pointLight1.position.set(10, 10, 10);
-            STATE.scene.add(pointLight1);
+            // Single light instead of two
+            const pointLight = new THREE.PointLight(0x667eea, 0.6, 50);
+            pointLight.position.set(0, 10, 10);
+            STATE.scene.add(pointLight);
 
-            const pointLight2 = new THREE.PointLight(0x764ba2, 0.8, 50);
-            pointLight2.position.set(-10, 5, -10);
-            STATE.scene.add(pointLight2);
-
-            const gridHelper = new THREE.GridHelper(60, 60, 0x667eea, 0x222233);
+            // Simplified grid
+            const gridHelper = new THREE.GridHelper(40, 20, 0x667eea, 0x222233);
             gridHelper.position.y = -6;
             STATE.scene.add(gridHelper);
 
@@ -736,8 +735,8 @@
         }
 
         function createTargetMesh() {
-            const geometry = new THREE.SphereGeometry(0.8, 16, 16);
-            const material = new THREE.MeshPhongMaterial({
+            const geometry = new THREE.SphereGeometry(0.8, 8, 8); // Simplified geometry
+            const material = new THREE.MeshLambertMaterial({ // Lighter than Phong
                 color: 0x888888,
                 emissive: 0x444444,
                 emissiveIntensity: 0.3
@@ -857,22 +856,17 @@
             STATE.targets.forEach(target => {
                 target.position.add(target.userData.velocity);
                 target.rotation.y += 0.02;
-                target.rotation.x += 0.01;
 
                 // Bounce
                 if (Math.abs(target.position.x) > 14) target.userData.velocity.x *= -1;
                 if (target.position.y > 8 || target.position.y < -5) target.userData.velocity.y *= -1;
                 if (target.position.z > 5 || target.position.z < -20) target.userData.velocity.z *= -1;
 
-                // VISUAL HINT: Strategy targets pulse gently
-                if (target.userData.isStrategy) {
+                // VISUAL HINT: Strategy targets pulse (simplified)
+                if (target.userData.isStrategy && Math.random() < 0.1) {
                     const pulse = Math.sin(time * 2 + target.userData.pulsePhase) * 0.2 + 0.8;
                     target.material.emissiveIntensity = 0.5 * pulse;
-                    target.scale.setScalar(0.95 + 0.1 * pulse);
                 }
-
-                // Gentle floating
-                target.position.y += Math.sin(time * 2 + target.position.x) * 0.008;
             });
         }
 
@@ -888,8 +882,8 @@
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: 'user',
-                        width: { ideal: 640 },
-                        height: { ideal: 480 }
+                        width: { ideal: 480 }, // Lower resolution for performance
+                        height: { ideal: 360 }
                     }
                 });
 
@@ -906,16 +900,16 @@
 
                 STATE.hands.setOptions({
                     maxNumHands: 2,
-                    modelComplexity: 1,
-                    minDetectionConfidence: 0.7,
-                    minTrackingConfidence: 0.6
+                    modelComplexity: 0, // Lightest model for mobile
+                    minDetectionConfidence: 0.6,
+                    minTrackingConfidence: 0.5
                 });
 
                 STATE.hands.onResults(onHandsResults);
 
                 updateLoadingProgress(80, 'Initializing model...');
 
-                await new Promise(resolve => setTimeout(resolve, 500));
+                await new Promise(resolve => setTimeout(resolve, 300));
 
                 updateLoadingProgress(100, 'Ready!');
 
@@ -1175,7 +1169,7 @@
         }
 
         function createExplosion(position, color) {
-            const particleCount = Math.min(25, CONFIG.PARTICLE_POOL_SIZE - STATE.particles.length);
+            const particleCount = Math.min(10, CONFIG.PARTICLE_POOL_SIZE - STATE.particles.length); // Reduced for performance
 
             for (let i = 0; i < particleCount; i++) {
                 const particle = getParticleFromPool();
