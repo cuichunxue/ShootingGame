@@ -2770,16 +2770,19 @@
             STATE.targets = [];
 
             const q = STATE.currentQuestion;
-            // Spawn 6-8 targets with multiple correct answers mixed in
-            const targetCount = 6 + Math.floor(Math.random() * 3);
+            // Spawn 5-7 targets with ONLY ONE correct answer
+            const targetCount = 5 + Math.floor(Math.random() * 3);
+
+            // Get wrong numbers (exclude the answer)
+            const wrongNumbers = q.allNumbers.filter(n => n !== q.answer);
 
             for (let i = 0; i < targetCount; i++) {
                 const target = getTarget();
                 if (!target) continue;
 
-                // 30% chance to be correct answer
-                const isCorrect = i < 2 || Math.random() < 0.3;
-                const number = isCorrect ? q.answer : q.allNumbers[Math.floor(Math.random() * q.allNumbers.length)];
+                // First target is the correct answer, rest are wrong
+                const isCorrect = (i === 0);
+                const number = isCorrect ? q.answer : wrongNumbers[i % wrongNumbers.length];
 
                 const color = BALLOON_COLORS[Math.floor(Math.random() * BALLOON_COLORS.length)];
                 target.material.color.setHex(color);
@@ -2799,7 +2802,7 @@
 
                 target.userData = {
                     number,
-                    isAnswer: number === q.answer,
+                    isAnswer: isCorrect,
                     isStrategy: false,
                     velocity: new THREE.Vector3(
                         (Math.random() - 0.5) * 0.03,
@@ -2894,13 +2897,13 @@
             updateHUD();
         }
 
-        // 🌟 FRENZY: Many small targets, hit all correct ones!
+        // 🌟 FRENZY: Many small targets, find the ONE correct answer!
         function startFrenzyEvent() {
             currentEvent = EVENTS.FRENZY;
-            eventState.questionsRemaining = 1;
+            eventState.questionsRemaining = 3;  // 3 rounds of frenzy
             eventState.correctInEvent = 0;
 
-            showFeedback('🌟 FRENZY! 正解を全部撃て!', '#ffd700');
+            showFeedback('🌟 FRENZY! 正解を探せ!', '#ffd700');
             playSFX('levelup');
 
             STATE.currentQuestion = generateQuestion();
@@ -2913,19 +2916,17 @@
             STATE.targets = [];
 
             const q = STATE.currentQuestion;
-            // Spawn 10-12 targets, 4-5 are correct
-            const correctCount = 4 + Math.floor(Math.random() * 2);
-            const wrongCount = 6 + Math.floor(Math.random() * 3);
+            // Spawn 8-10 targets, ONLY ONE is correct
+            const totalCount = 8 + Math.floor(Math.random() * 3);
 
-            // Spawn correct answers
-            for (let i = 0; i < correctCount; i++) {
-                spawnFrenzyTarget(q.answer, true);
-            }
-            // Spawn wrong answers
-            for (let i = 0; i < wrongCount; i++) {
-                const wrongNum = q.allNumbers.find(n => n !== q.answer) ||
-                    q.answer + Math.floor(Math.random() * 5) - 2;
-                spawnFrenzyTarget(wrongNum, false);
+            // Get wrong numbers
+            const wrongNumbers = q.allNumbers.filter(n => n !== q.answer);
+
+            for (let i = 0; i < totalCount; i++) {
+                // First one is correct, rest are wrong
+                const isCorrect = (i === 0);
+                const number = isCorrect ? q.answer : wrongNumbers[i % wrongNumbers.length];
+                spawnFrenzyTarget(number, isCorrect);
             }
         }
 
@@ -3115,16 +3116,22 @@
                 }
             }
 
-            // FRENZY: check if all correct targets hit
-            if (currentEvent === EVENTS.FRENZY) {
-                const correctRemaining = STATE.targets.filter(t => t.visible && t.userData.isAnswer).length;
-                if (correctRemaining === 0) {
-                    const bonus = eventState.correctInEvent * 30;
+            // FRENZY: 3 rounds, find the one correct answer each round
+            if (currentEvent === EVENTS.FRENZY && isCorrect) {
+                eventState.questionsRemaining--;
+                if (eventState.questionsRemaining > 0) {
+                    // Next frenzy round
+                    STATE.currentQuestion = generateQuestion();
+                    spawnFrenzyTargets();
+                    updateHUD();
+                    return true;
+                } else {
+                    // Frenzy complete!
+                    const bonus = eventState.correctInEvent * 50;
                     showFeedback(`🌟 FRENZY完了! +${bonus}`, '#ffd700');
                     STATE.player.score += bonus;
                     currentEvent = EVENTS.NORMAL;
                 }
-                return false;  // Don't advance question in frenzy
             }
 
             return false;
