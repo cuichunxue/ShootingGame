@@ -4,78 +4,124 @@ A mobile-first, gesture-based math learning game for 2nd graders using Three.js 
 
 ## 🌟 Features
 
+### Core Gameplay
 - **Gesture-Based Shooting**: Use pistol hand gestures to shoot math answers
 - **Strategy-Based Learning**: Rewards students for following mental math strategies
-- **Mobile-First**: Optimized for iOS Safari and Android Chrome
+- **Multi-Player Support**: Solo, 2-Player Simultaneous, and Party modes
+- **Mobile-First Design**: Optimized for iOS Safari and Android Chrome
 - **Camera Privacy**: Camera feed is never displayed or saved
-- **Multi-Player Support**: Party mode with leaderboard
-- **Rich VFX**: Particles, explosions, laser beams, and feedback
-- **Crash-Safe**: Robust error handling with retry mechanisms
+
+### Game Modes
+
+1. **Solo Mode**: Single player, race against time
+2. **2-Player Simultaneous**: Two players using both hands, compete in real-time
+3. **Party Mode**: Turn-based multiplayer with leaderboard
+
+### Math Content (2nd Grade Level)
+
+#### Addition - Make-10 Strategy
+- Example: `7 + 8 = ?`
+- Strategy: `7 + 3 = 10`, then `10 + 5 = 15`
+- Intermediate target: `10` (bonus points!)
+
+#### Subtraction - Count-up Strategy
+- Example: `15 - 8 = ?`
+- Strategy: Think "8 + ? = 15"
+- Answer: `7`
+
+#### Multiplication - Decomposition
+- Example: `7 × 6 = ?`
+- Strategy: `(7 × 2) + (7 × 4) = 14 + 28 = 42`
+- Intermediate targets: `14`, `28` (bonus points!)
+
+#### Multiplication - 9× Shortcut
+- Example: `9 × 7 = ?`
+- Strategy: `(10 × 7) - 7 = 70 - 7 = 63`
+- Intermediate targets: `70`, `7` (bonus points!)
+
+#### Division - Inverse Multiplication
+- Example: `24 ÷ 6 = ?`
+- Strategy: Think "6 × ? = 24"
+- Answer: `4`
 
 ## 🚀 Quick Start
 
-1. **Open the game**: Simply open `gesture-math-game.html` in a mobile browser
-2. **Grant camera permission**: Required for hand tracking (your image is never shown)
-3. **Make a pistol gesture**:
+1. **Open the game**: Open `gesture-math-game.html` in a mobile browser
+2. **Grant camera permission**: Required for hand tracking (never shown or saved)
+3. **Choose mode**: Solo, 2-Player, or Party
+4. **Make a pistol gesture**:
    - Point with your index finger
    - Thumb up
-   - Close the gap between thumb and index to "arm" the gun
-   - Quickly open the gap to "fire"
-4. **Shoot the correct answers** to score points!
+   - Close thumb and index together to "arm"
+   - Quickly separate to "fire"
+5. **Shoot correct answers** and strategy intermediates for bonus points!
 
-## 📚 How It Works
+## 🎮 Gesture Controls
 
-### Math Strategy Learning
+### Hand Gesture State Machine
 
-The game teaches mental math strategies through gameplay:
+The game uses a robust finite state machine (FSM) with hysteresis to prevent false triggers:
 
-- **Make Ten**: For addition like 7 + 8, think (7 + 3) + 5 = 15
-- **Doubles**: For 6 + 7, think 6 + 6 + 1 = 13
-- **Compensation**: For 29 + 9, think 29 + 10 - 1 = 38
-- **Subtract by Adding**: For 15 - 8, think "what + 8 = 15?"
-- **Subtract in Chunks**: For 35 - 12, think 35 - 10 - 2 = 23
+```
+Idle → Aiming → Armed → Fired → Cooldown → Aiming
+```
 
-### Scoring System
+#### State Transitions
+
+1. **Idle**: No hand detected or fingers not in position
+2. **Aiming**: Index finger extended, thumb up, distance < 0.16
+3. **Armed**: Thumb-index distance < 0.08 (close together)
+4. **Fired**: Distance suddenly > 0.15 AND thumb velocity > 0.015
+5. **Cooldown**: 250ms cooldown before next shot
+
+#### Hysteresis
+
+- Built-in 0.02 hysteresis prevents jitter
+- Velocity threshold ensures intentional firing
+- Cooldown prevents accidental double-shots
+
+### Visual Feedback
+
+- **Red Laser**: Player 1 (Left hand) aim indicator
+- **Green Laser**: Player 2 (Right hand) aim indicator
+- **Target Colors**:
+  - 🟢 Green: Correct answer
+  - 🟡 Gold: Strategy intermediate (smart bonus)
+  - ⚪ Gray: Wrong answer (penalty)
+
+## 📊 Scoring System
 
 - **Correct Answer**: +100 points, streak increases
 - **Strategy Intermediate**: +50 points (smart bonus), streak increases
 - **Wrong Answer**: -20 points, streak decreases
 - **Miss**: No score change
-
-### Streak Bonuses
-
-Build a streak by answering correctly. Higher streaks unlock visual rewards!
-
-## 🎮 Game Controls
-
-### Hand Gesture States
-
-1. **Idle**: No hand detected or fingers not in position
-2. **Aiming**: Index finger extended, thumb up
-3. **Armed**: Thumb and index finger close together (< 8cm)
-4. **Fired**: Thumb and index quickly separate (> 15cm with speed)
-5. **Cooldown**: 300ms wait before next shot
-
-### Visual Feedback
-
-- **Green Targets**: Correct answer
-- **Yellow Targets**: Strategy intermediate numbers (bonus points)
-- **Gray Targets**: Wrong answers (penalty)
-- **Red/Green Lasers**: Aim indicators for each hand
-- **Particle Explosions**: Hit feedback
+- **Accuracy**: Tracked as hits/shots %
 
 ## 🛠️ Technical Details
 
 ### Libraries
 
 - **Three.js r128**: 3D rendering engine
-- **MediaPipe Hands 0.4.1646424915**: Hand tracking (pinned version for stability)
+- **MediaPipe Hands 0.4.1646424915**: Hand tracking (PINNED for stability)
+- **Web Audio API**: iOS-safe sound effects
 
-### Performance
+### Performance Optimizations
 
 - **Rendering**: 60 FPS target
 - **Hand Detection**: 12 FPS (configurable)
-- **Pixel Ratio**: Capped at 2x for performance
+- **Pixel Ratio**: Capped at 2× for mobile performance
+- **Object Pooling**:
+  - 20 pre-allocated target meshes
+  - 200 pre-allocated particle meshes
+  - Reuse instead of create/destroy
+
+### Mobile-First Features
+
+- Safe-area insets for notched devices (iPhone X+)
+- Touch event handling (no scroll, no zoom, no double-tap)
+- Portrait-first orientation
+- Fullscreen layout
+- Visibility API integration (pause when hidden)
 
 ### Browser Support
 
@@ -83,151 +129,292 @@ Build a streak by answering correctly. Higher streaks unlock visual rewards!
 - ✅ Android Chrome 90+
 - ✅ Desktop Chrome/Firefox (for testing)
 
-### Privacy
+### Privacy & Security
 
-- Camera access required for hand tracking only
-- Video feed is **hidden** and never displayed
-- No data is collected, stored, or transmitted
+- Camera access required for hand tracking ONLY
+- Video feed is **completely hidden** (positioned off-screen)
+- No data collection, storage, or transmission
 - All processing happens locally on device
+- No external API calls beyond CDN libraries
 
 ## 🏗️ Architecture
 
 ### Core Systems
 
-1. **Three.js Scene**: 3D rendering with targets, particles, and effects
-2. **MediaPipe Integration**: Hand landmark detection
-3. **Gesture FSM**: State machine for pistol gesture recognition
-4. **Math Engine**: Question generation with strategy paths
-5. **Audio System**: iOS-safe Web Audio API for sound effects
-6. **UI System**: Overlays for Start, Loading, Error, HUD, Results
-7. **VFX System**: Particles, lasers, explosions
+```
+┌─────────────────────────────────────────┐
+│  Three.js Scene (60 FPS)                │
+│  - 3D targets with flying numbers       │
+│  - Particle system (explosions, VFX)    │
+│  - Laser beams (aim indicators)         │
+│  - Grid environment                     │
+└─────────────────────────────────────────┘
+           ▲                    │
+           │ render             │ world coords
+           │                    ▼
+┌─────────────────────────────────────────┐
+│  MediaPipe Hands (12 FPS)               │
+│  - Hand landmark detection              │
+│  - Stable hand ID assignment            │
+│  - Handedness tracking (Left/Right)     │
+└─────────────────────────────────────────┘
+           ▲                    │
+           │ video frames       │ landmarks
+           │                    ▼
+┌─────────────────────────────────────────┐
+│  Gesture FSM (per hand)                 │
+│  - Distance calculation                 │
+│  - Velocity tracking                    │
+│  - State transitions + hysteresis       │
+│  - Cooldown management                  │
+└─────────────────────────────────────────┘
+                    │
+                    │ fire events
+                    ▼
+┌─────────────────────────────────────────┐
+│  Game Logic                             │
+│  - Raycasting (shot → target)           │
+│  - Score calculation                    │
+│  - Question generation                  │
+│  - Multi-player handling                │
+└─────────────────────────────────────────┘
+```
 
 ### Game Flow
 
 ```
-Start Screen → Camera Permission → Loading Model → Gameplay → Results → Next Round
+Start Screen
+    ↓
+Choose Mode (Solo/2-Player/Party)
+    ↓
+Loading (Camera + MediaPipe Model)
+    ↓
+Gameplay (10 questions, 60 seconds)
+    ↓
+Results & Leaderboard
+    ↓
+Next Round OR Main Menu
 ```
 
-### Detection Loop (12 FPS)
+### Detection & Render Loops
 
+**Detection Loop (12 FPS)**
 ```
-Video Frame → MediaPipe → Hand Landmarks → Gesture FSM → Shooting Events
+1. Send video frame to MediaPipe
+2. Receive hand landmarks (max 2 hands)
+3. Assign stable hand IDs (Left/Right)
+4. Update gesture FSM for each hand
+5. Generate fire events
+6. Update laser beams
 ```
 
-### Render Loop (60 FPS)
-
+**Render Loop (60 FPS)**
 ```
-Update Targets → Update Particles → Update VFX → Render Scene → Update HUD
+1. Update target positions (flying, bouncing)
+2. Update particle physics (explosions)
+3. Update timers and HUD
+4. Render Three.js scene
+5. Check win/lose conditions
 ```
 
 ## 🎓 Educational Design
 
 ### Target Audience
-
 2nd grade students (ages 7-8) learning mental math strategies.
 
 ### Learning Objectives
 
 1. **Mental Math Fluency**: Practice arithmetic without paper
 2. **Strategy Recognition**: Identify efficient calculation methods
-3. **Number Sense**: Understand relationships between numbers
-4. **Problem Solving**: Choose optimal paths to solutions
+3. **Number Sense**: Understand number relationships
+4. **Problem Solving**: Choose optimal solution paths
 
 ### Pedagogical Approach
 
-- **Implicit Learning**: Strategies are rewarded, not explained
+- **Implicit Learning**: Strategies rewarded through gameplay, not explained
 - **Immediate Feedback**: Visual and audio cues for all actions
-- **Progressive Difficulty**: Questions adapt to grade level
-- **Gamification**: Points, streaks, and competition motivate practice
+- **Progressive Difficulty**: Multiple question types
+- **Gamification**: Points, streaks, accuracy tracking
+- **Social Learning**: Multi-player modes encourage peer learning
+
+### Strategy Examples
+
+**Make-10 (Addition)**
+- Instead of `8 + 7 = ?`
+- Think: `8 + 2 = 10`, then `10 + 5 = 15`
+- This builds number decomposition skills
+
+**Count-up (Subtraction)**
+- Instead of `14 - 9 = ?`
+- Think: `9 + ? = 14`
+- This builds inverse operation understanding
+
+**9× Shortcut (Multiplication)**
+- Instead of memorizing `9 × 6 = 54`
+- Think: `(10 × 6) - 6 = 60 - 6 = 54`
+- This builds pattern recognition
 
 ## 🔧 Customization
 
-### Adjust Detection Sensitivity
+### Adjust Gesture Sensitivity
 
-In the code, modify `GESTURE_CONFIG`:
-
-```javascript
-const GESTURE_CONFIG = {
-    ARM_THRESHOLD: 0.08,    // Distance to arm gun
-    FIRE_THRESHOLD: 0.15,   // Distance to fire
-    V_MIN: 0.01,            // Minimum thumb speed
-    COOLDOWN_MS: 300        // Cooldown between shots
-};
-```
-
-### Change Game Duration
-
-Modify the time limit:
+Edit `CONFIG.GESTURE` in the code:
 
 ```javascript
-STATE.timeLeft = 60; // Seconds per round
-```
-
-### Adjust Question Count
-
-```javascript
-if (STATE.questionIndex >= 10) { // Change 10 to desired count
-    endRound();
+GESTURE: {
+    ARM_THRESHOLD: 0.08,      // Distance to arm (lower = more sensitive)
+    FIRE_THRESHOLD: 0.15,     // Distance to fire (higher = harder to fire)
+    HYSTERESIS: 0.02,         // Anti-jitter (lower = more responsive)
+    V_MIN_THUMB: 0.015,       // Min thumb speed (lower = easier to fire)
+    COOLDOWN_MS: 250          // Cooldown time (lower = faster shooting)
 }
+```
+
+### Adjust Game Settings
+
+```javascript
+CONFIG: {
+    MAX_TARGETS: 8,              // Number of targets per question
+    QUESTIONS_PER_ROUND: 10,     // Questions before round ends
+    TIME_LIMIT: 60,              // Seconds per round
+    TARGET_POOL_SIZE: 20,        // Pre-allocated targets
+    PARTICLE_POOL_SIZE: 200      // Pre-allocated particles
+}
+```
+
+### Change Detection Rate
+
+```javascript
+detectionInterval: 1000 / 12  // 12 FPS (change to 10-15 FPS range)
 ```
 
 ## 🐛 Troubleshooting
 
-### Camera Not Working
+### Camera Issues
 
+**Camera not working**
 - Ensure browser has camera permission
-- Check if another app is using the camera
-- Try reloading the page
-- On iOS, ensure you're not in Low Power Mode
+- Check if another app is using camera
+- On iOS, disable Low Power Mode
+- Try Safari instead of Chrome on iOS
 
-### Hand Not Detected
-
-- Ensure good lighting
-- Keep hand in frame
-- Try moving hand closer/farther from camera
-- Avoid complex backgrounds
+**Hand not detected**
+- Ensure good lighting (face a window/light)
+- Keep hand in frame (arm's length from camera)
+- Avoid busy backgrounds
+- Try different hand positions
 
 ### Performance Issues
 
+**Low FPS / Laggy**
 - Close other browser tabs
 - Reduce screen brightness
-- Update your browser
-- Try on a newer device
+- Update browser to latest version
+- Try on newer device
+- Check CPU usage in DevTools
 
-### Audio Not Playing
+**Hand tracking slow**
+- Normal! Detection runs at 12 FPS (intentional)
+- Rendering still at 60 FPS
+- Landmarks reused between detections
 
-- Tap the screen to resume audio context (iOS requirement)
-- Check device volume
-- Ensure browser allows audio
-- Try headphones if device speaker is broken
+### Gesture Recognition
+
+**Gun won't fire**
+- Make clearer pistol shape (thumb perpendicular to index)
+- Ensure thumb and index start close together
+- Snap thumb away quickly (velocity matters!)
+- Wait for cooldown (250ms between shots)
+
+**Accidental firing**
+- Increase `FIRE_THRESHOLD` in config
+- Increase `V_MIN_THUMB` for stricter velocity check
+- Increase `COOLDOWN_MS` for longer delay
+
+### Audio Issues
+
+**No sound**
+- Tap screen to resume AudioContext (iOS requirement)
+- Check device volume and mute switch
+- Enable sound in browser settings
+- Try with headphones
+
+**Sound delayed**
+- Normal on some iOS devices
+- Web Audio API has some latency
+- Cannot be fixed without native app
+
+### Game Issues
+
+**Targets not appearing**
+- Check browser console for errors
+- Refresh page
+- Clear browser cache
+
+**Wrong scoring**
+- Strategy intermediates give +50 (intentional)
+- Shooting gray targets gives -20 (intentional)
+- Missing gives 0 points (intentional)
 
 ## 📝 Development Notes
 
-### Version Locking
+### Version Locking (CRITICAL)
 
-MediaPipe Hands is pinned to `0.4.1646424915` to prevent WASM crashes. Do not update without thorough testing.
+MediaPipe Hands is **PINNED** to version `0.4.1646424915`. This is critical for stability:
+
+```javascript
+locateFile: (file) => {
+    return `https://unpkg.com/@mediapipe/hands@0.4.1646424915/${file}`;
+}
+```
+
+**Do NOT update this version** without extensive testing, as it can cause:
+- WASM initialization failures
+- Model loading crashes
+- Landmark detection errors
 
 ### Error Handling
 
-All critical operations are wrapped in try-catch blocks with user-friendly error messages and retry options.
+All critical operations wrapped in try-catch:
+- MediaPipe initialization
+- Camera access
+- Hand detection loop
+- Audio playback
 
-### Mobile Optimizations
+User-friendly error messages with retry options.
 
-- `touch-action: none` prevents scroll/bounce
-- `playsinline` for video on iOS
-- Pixel ratio capped at 2x
-- Web Audio context resumed on user interaction
+### Object Pooling Benefits
+
+- **Performance**: No GC pauses from constant allocation/deallocation
+- **Stability**: Pre-allocated memory prevents OOM on mobile
+- **Smoothness**: Consistent frame times
+
+### Safe-Area Insets
+
+For notched devices (iPhone X+):
+
+```css
+padding-top: env(safe-area-inset-top);
+padding-bottom: env(safe-area-inset-bottom);
+padding-left: env(safe-area-inset-left);
+padding-right: env(safe-area-inset-right);
+```
+
+Ensures UI doesn't go under notch or home indicator.
 
 ## 🎉 Credits
 
-- **Three.js**: 3D rendering
+- **Three.js**: 3D rendering engine by Mr.doob and contributors
 - **MediaPipe**: Hand tracking technology by Google
-- **Design**: Mobile-first gesture gaming for education
+- **Concept**: Strategy-based math learning through gesture gaming
+- **Design**: Mobile-first educational game design
 
 ## 📄 License
 
-Educational use only. Not for commercial distribution.
+Educational use only. Not for commercial distribution without permission.
 
 ---
 
 **Made with ❤️ for young mathematicians**
+
+*Shoot numbers, learn strategies, have fun!*

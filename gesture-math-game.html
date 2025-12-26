@@ -19,6 +19,11 @@
             overflow: hidden;
             background: #000;
             touch-action: none;
+            /* Safe area insets for notched devices */
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            padding-left: env(safe-area-inset-left);
+            padding-right: env(safe-area-inset-right);
         }
 
         #gameCanvas {
@@ -37,6 +42,7 @@
             width: 1px;
             height: 1px;
             opacity: 0;
+            pointer-events: none;
         }
 
         .overlay {
@@ -49,9 +55,10 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            background: rgba(0, 0, 0, 0.9);
+            background: rgba(0, 0, 0, 0.95);
             z-index: 1000;
             transition: opacity 0.3s;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
 
         .overlay.hidden {
@@ -74,10 +81,12 @@
             text-align: center;
             padding: 0 1rem;
             max-width: 600px;
+            line-height: 1.5;
         }
 
         .btn {
             padding: 1rem 2rem;
+            margin: 0.5rem;
             font-size: 1.2rem;
             border: none;
             border-radius: 8px;
@@ -91,6 +100,13 @@
 
         .btn:active {
             transform: scale(0.95);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
         }
 
         .spinner {
@@ -110,9 +126,9 @@
 
         #hud {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
+            top: env(safe-area-inset-top);
+            left: env(safe-area-inset-left);
+            right: env(safe-area-inset-right);
             padding: 1rem;
             z-index: 100;
             color: white;
@@ -124,25 +140,51 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 0.5rem;
+            gap: 0.5rem;
         }
 
         .hud-item {
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(0, 0, 0, 0.8);
             padding: 0.5rem 1rem;
             border-radius: 8px;
-            font-size: 1.2rem;
+            font-size: 1rem;
             font-weight: bold;
         }
 
+        .player-scores {
+            display: flex;
+            gap: 0.5rem;
+            flex: 1;
+            justify-content: space-around;
+        }
+
+        .player-score {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: bold;
+            border: 2px solid;
+        }
+
+        .player-score.p1 {
+            border-color: #ff0000;
+        }
+
+        .player-score.p2 {
+            border-color: #00ff00;
+        }
+
         .question-display {
-            background: rgba(102, 126, 234, 0.9);
+            background: rgba(102, 126, 234, 0.95);
             padding: 1rem 2rem;
             border-radius: 12px;
             font-size: 2rem;
             text-align: center;
             margin: 1rem auto;
             max-width: 90%;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            font-weight: bold;
         }
 
         .streak-display {
@@ -165,7 +207,7 @@
             z-index: 500;
             pointer-events: none;
             animation: feedbackPop 0.6s ease-out;
-            text-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+            text-shadow: 0 0 20px rgba(0, 0, 0, 0.9), 0 0 40px rgba(0, 0, 0, 0.7);
         }
 
         @keyframes feedbackPop {
@@ -198,14 +240,15 @@
 
         @media (max-width: 480px) {
             .overlay h1 { font-size: 1.8rem; }
-            .question-display { font-size: 1.5rem; }
-            .feedback { font-size: 3rem; }
+            .question-display { font-size: 1.5rem; padding: 0.8rem 1.5rem; }
+            .feedback { font-size: 2.5rem; }
+            .hud-item { font-size: 0.9rem; padding: 0.4rem 0.8rem; }
         }
     </style>
 </head>
 <body>
-    <!-- Hidden video element for MediaPipe -->
-    <video id="hiddenVideo" playsinline autoplay></video>
+    <!-- Hidden video element for MediaPipe (NEVER DISPLAYED) -->
+    <video id="hiddenVideo" playsinline autoplay muted></video>
 
     <!-- Three.js canvas -->
     <canvas id="gameCanvas"></canvas>
@@ -213,12 +256,13 @@
     <!-- HUD -->
     <div id="hud" class="hidden">
         <div class="hud-row">
-            <div class="hud-item">Score: <span id="scoreDisplay">0</span></div>
+            <div class="hud-item">Mode: <span id="modeDisplay">Solo</span></div>
             <div class="hud-item">Time: <span id="timeDisplay">60</span>s</div>
         </div>
-        <div class="hud-row">
-            <div class="hud-item" id="streakDisplay">Streak: <span id="streakValue">0</span></div>
-            <div class="hud-item">Q: <span id="questionCount">0</span>/10</div>
+        <div class="hud-row player-scores" id="playerScores">
+            <div class="player-score p1">
+                P1: <span id="p1Score">0</span> | Streak: <span id="p1Streak">0</span>
+            </div>
         </div>
         <div class="question-display" id="questionDisplay">?</div>
     </div>
@@ -226,17 +270,23 @@
     <!-- Start Overlay -->
     <div id="startOverlay" class="overlay">
         <h1>🎯 Math Shooting Game</h1>
-        <p>Use hand gestures to shoot the correct answers!<br>
-        Make a pistol gesture: point with index finger, thumb up.<br>
-        <strong>Camera access needed (your image is never shown or saved)</strong></p>
-        <button class="btn" onclick="startGame()">Start Game</button>
+        <p>
+            Use hand gestures to shoot the correct answers!<br>
+            Make a pistol: point with index finger, thumb up.<br>
+            <strong>Camera access needed (never shown or saved)</strong>
+        </p>
+        <div class="btn-group">
+            <button class="btn" onclick="startGame('solo')">Solo Mode</button>
+            <button class="btn" onclick="startGame('duo')">2-Player</button>
+            <button class="btn" onclick="startGame('party')">Party Mode</button>
+        </div>
     </div>
 
     <!-- Loading Overlay -->
     <div id="loadingOverlay" class="overlay hidden">
         <div class="spinner"></div>
         <h1>Loading...</h1>
-        <p>Initializing hand tracking model</p>
+        <p>Initializing hand tracking model<br>This may take a few seconds</p>
     </div>
 
     <!-- Error Overlay -->
@@ -250,139 +300,209 @@
     <div id="resultsOverlay" class="overlay hidden">
         <h1>🎉 Round Complete!</h1>
         <div class="leaderboard" id="leaderboardDisplay"></div>
-        <button class="btn" onclick="nextRound()">Next Round</button>
+        <div class="btn-group">
+            <button class="btn" onclick="nextRound()">Next Round</button>
+            <button class="btn" onclick="backToMenu()">Main Menu</button>
+        </div>
     </div>
 
     <!-- Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
-    <!-- MediaPipe Hands - PINNED VERSION 0.4.1646424915 -->
+    <!-- MediaPipe Hands - PINNED VERSION 0.4.1646424915 (CRITICAL FOR STABILITY) -->
     <script src="https://unpkg.com/@mediapipe/hands@0.4.1646424915/hands.js" crossorigin="anonymous"></script>
     <script src="https://unpkg.com/@mediapipe/camera_utils@0.3.1640029074/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://unpkg.com/@mediapipe/drawing_utils@0.3.1620248257/drawing_utils.js" crossorigin="anonymous"></script>
 
     <script>
+        'use strict';
+
         // ============================================
         // GLOBAL STATE
         // ============================================
         const STATE = {
+            // Three.js
             scene: null,
             camera: null,
             renderer: null,
+
+            // MediaPipe
             hands: null,
             videoElement: null,
+            handsData: [],
+            lastLandmarks: null,
+
+            // Audio
             audioContext: null,
 
+            // Game mode
+            gameMode: 'solo', // 'solo', 'duo', 'party'
+
+            // Player data
+            players: [
+                { name: 'Player 1', score: 0, streak: 0, accuracy: 0, shots: 0, hits: 0 },
+                { name: 'Player 2', score: 0, streak: 0, accuracy: 0, shots: 0, hits: 0 }
+            ],
+            currentPlayerIndex: 0,
+
             // Game state
-            score: 0,
-            streak: 0,
             timeLeft: 60,
             questionIndex: 0,
             currentQuestion: null,
-            targets: [],
 
-            // Hand tracking
-            handsData: [],
-            lastLandmarks: null,
+            // Object pools
+            targetPool: [],
+            particlePool: [],
+            targets: [],
+            particles: [],
+            lasers: [null, null],
+
+            // Hand tracking with stable IDs
+            handStates: [
+                { state: 'idle', handedness: null, lastPos: null, cooldownEnd: 0 },
+                { state: 'idle', handedness: null, lastPos: null, cooldownEnd: 0 }
+            ],
 
             // Timing
             lastDetectionTime: 0,
             detectionInterval: 1000 / 12, // 12 FPS
             gameStartTime: 0,
-
-            // Party mode
-            players: [],
-            currentPlayerIndex: 0,
-
-            // Gesture FSM per hand
-            handStates: [{}, {}],
-
-            // VFX
-            particles: [],
-            lasers: [],
+            lastRenderTime: 0,
 
             // Flags
             isRunning: false,
             isPaused: false,
-            modelReady: false,
+            modelReady: false
+        };
+
+        // ============================================
+        // CONFIGURATION
+        // ============================================
+        const CONFIG = {
+            // Gesture FSM with hysteresis
+            GESTURE: {
+                ARM_THRESHOLD: 0.08,        // Distance to arm
+                FIRE_THRESHOLD: 0.15,       // Distance to fire
+                HYSTERESIS: 0.02,           // Prevent jitter
+                V_MIN_THUMB: 0.015,         // Minimum thumb speed
+                COOLDOWN_MS: 250            // Cooldown per hand
+            },
+
+            // Performance
+            MAX_TARGETS: 8,
+            MAX_PARTICLES: 100,
+            TARGET_POOL_SIZE: 20,
+            PARTICLE_POOL_SIZE: 200,
+
+            // Game
+            QUESTIONS_PER_ROUND: 10,
+            TIME_LIMIT: 60
         };
 
         // ============================================
         // MATH QUESTION GENERATOR
         // ============================================
         const QUESTION_TEMPLATES = [
-            // Addition strategies
+            // ===== ADDITION: Make-10 Strategy =====
             {
-                type: 'make_ten',
+                type: 'addition_make10',
                 generate: () => {
                     const a = 7 + Math.floor(Math.random() * 3); // 7-9
-                    const b = (10 - a) + Math.floor(Math.random() * 5); // complete to 10 + extra
-                    const strategy = [10, a + b - 10];
-                    return { question: `${a} + ${b}`, answer: a + b, strategy, hint: 'Make 10 first!' };
-                }
-            },
-            {
-                type: 'doubles',
-                generate: () => {
-                    const base = 3 + Math.floor(Math.random() * 7); // 3-9
-                    const isPlus = Math.random() > 0.5;
-                    const offset = isPlus ? 1 : -1;
-                    const a = base;
-                    const b = base + offset;
-                    const strategy = [base * 2, base * 2 + offset];
+                    const b = (10 - a) + Math.floor(Math.random() * 6) + 1; // complete to 10 + extra
+                    const intermediate = 10;
+                    const answer = a + b;
+                    const strategy = [intermediate, answer];
+
                     return {
                         question: `${a} + ${b}`,
-                        answer: a + b,
+                        answer,
                         strategy,
-                        hint: `Think: ${base} + ${base} = ${base*2}`
+                        hint: `Make 10: ${a} + ${10-a} = 10, then 10 + ${b-(10-a)} = ${answer}`
                     };
                 }
             },
+
+            // ===== SUBTRACTION: Count-up Strategy =====
             {
-                type: 'compensation',
-                generate: () => {
-                    const a = 15 + Math.floor(Math.random() * 20); // 15-34
-                    const b = 9 + Math.floor(Math.random() * 3); // 9-11
-                    const roundB = Math.round(b / 10) * 10;
-                    const diff = roundB - b;
-                    const strategy = [a + roundB, (a + roundB) - diff];
-                    return {
-                        question: `${a} + ${b}`,
-                        answer: a + b,
-                        strategy,
-                        hint: `Round ${b} to ${roundB}, then adjust!`
-                    };
-                }
-            },
-            // Subtraction strategies
-            {
-                type: 'subtract_by_adding',
+                type: 'subtraction_countup',
                 generate: () => {
                     const answer = 3 + Math.floor(Math.random() * 8); // 3-10
-                    const a = 10 + Math.floor(Math.random() * 10); // 10-19
+                    const a = 12 + Math.floor(Math.random() * 15); // 12-26
                     const b = a - answer;
-                    const strategy = [answer];
+                    const strategy = [answer]; // The gap is the answer
+
                     return {
                         question: `${a} - ${b}`,
                         answer,
                         strategy,
-                        hint: `What + ${b} = ${a}?`
+                        hint: `Count up: ${b} + ? = ${a}`
                     };
                 }
             },
+
+            // ===== MULTIPLICATION: Decomposition =====
             {
-                type: 'subtract_in_chunks',
+                type: 'multiplication_decompose',
                 generate: () => {
-                    const a = 20 + Math.floor(Math.random() * 30); // 20-49
-                    const tensToSubtract = 1 + Math.floor(Math.random() * 2); // 10 or 20
-                    const onesSubtract = 3 + Math.floor(Math.random() * 5); // 3-7
-                    const b = tensToSubtract * 10 + onesSubtract;
-                    const strategy = [a - tensToSubtract * 10, a - b];
+                    const a = 6 + Math.floor(Math.random() * 3); // 6-8
+                    const b = 3 + Math.floor(Math.random() * 4); // 3-6
+
+                    // Decompose b into 2 + remainder
+                    const part1 = 2;
+                    const part2 = b - part1;
+
+                    const step1 = a * part1;
+                    const step2 = a * part2;
+                    const answer = a * b;
+
+                    const strategy = [step1, step2, answer];
+
                     return {
-                        question: `${a} - ${b}`,
-                        answer: a - b,
+                        question: `${a} × ${b}`,
+                        answer,
                         strategy,
-                        hint: `Subtract ${tensToSubtract * 10} first!`
+                        hint: `${a} × ${b} = (${a} × ${part1}) + (${a} × ${part2}) = ${step1} + ${step2}`
+                    };
+                }
+            },
+
+            // ===== MULTIPLICATION: 9× Shortcut =====
+            {
+                type: 'multiplication_9x',
+                generate: () => {
+                    const b = 3 + Math.floor(Math.random() * 6); // 3-8
+                    const a = 9;
+
+                    const step1 = 10 * b; // 10× is easier
+                    const step2 = b;       // Subtract b
+                    const answer = a * b;
+
+                    const strategy = [step1, step2, answer];
+
+                    return {
+                        question: `9 × ${b}`,
+                        answer,
+                        strategy,
+                        hint: `9 × ${b} = (10 × ${b}) - ${b} = ${step1} - ${step2}`
+                    };
+                }
+            },
+
+            // ===== DIVISION: Inverse Multiplication =====
+            {
+                type: 'division_inverse',
+                generate: () => {
+                    const divisor = 3 + Math.floor(Math.random() * 5); // 3-7
+                    const answer = 3 + Math.floor(Math.random() * 6);  // 3-8
+                    const a = divisor * answer;
+
+                    const strategy = [answer];
+
+                    return {
+                        question: `${a} ÷ ${divisor}`,
+                        answer,
+                        strategy,
+                        hint: `Think: ${divisor} × ? = ${a}`
                     };
                 }
             }
@@ -392,28 +512,40 @@
             const template = QUESTION_TEMPLATES[Math.floor(Math.random() * QUESTION_TEMPLATES.length)];
             const q = template.generate();
 
-            // Generate distractors
+            // Generate distractors (wrong answers)
             const distractors = new Set();
             distractors.add(q.answer + 1);
             distractors.add(q.answer - 1);
-            distractors.add(q.answer + 10);
-            distractors.add(q.answer - 10);
+            distractors.add(q.answer + Math.floor(Math.random() * 5) + 2);
+            distractors.add(Math.max(1, q.answer - Math.floor(Math.random() * 5) - 2));
 
-            while (distractors.size < 5) {
-                const offset = (Math.random() - 0.5) * 20;
-                distractors.add(Math.max(0, q.answer + Math.floor(offset)));
+            // Add more distractors
+            while (distractors.size < 6) {
+                const offset = Math.floor(Math.random() * 20) - 10;
+                const distractor = Math.max(1, q.answer + offset);
+                if (distractor !== q.answer) {
+                    distractors.add(distractor);
+                }
             }
 
             // Remove answer from distractors
             distractors.delete(q.answer);
 
-            // Combine with strategy intermediate values
-            const allNumbers = [q.answer, ...q.strategy, ...Array.from(distractors)];
-            const uniqueNumbers = [...new Set(allNumbers)].filter(n => n >= 0);
+            // Combine strategy intermediates + distractors
+            const allNumbers = [q.answer, ...q.strategy.filter(s => s !== q.answer), ...Array.from(distractors)];
+            const uniqueNumbers = [...new Set(allNumbers)].filter(n => n > 0);
+
+            // Limit to MAX_TARGETS
+            const finalNumbers = uniqueNumbers.slice(0, CONFIG.MAX_TARGETS);
+
+            // Ensure answer is always included
+            if (!finalNumbers.includes(q.answer)) {
+                finalNumbers[finalNumbers.length - 1] = q.answer;
+            }
 
             return {
                 ...q,
-                allNumbers: uniqueNumbers.slice(0, 8)
+                allNumbers: finalNumbers
             };
         }
 
@@ -422,18 +554,19 @@
         // ============================================
         function initAudio() {
             try {
-                STATE.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                STATE.audioContext = new AudioContext();
 
-                // iOS requires user interaction
+                // Resume after user interaction (iOS requirement)
                 if (STATE.audioContext.state === 'suspended') {
                     STATE.audioContext.resume();
                 }
             } catch (e) {
-                console.warn('Web Audio not supported', e);
+                console.warn('Web Audio not supported:', e);
             }
         }
 
-        function playTone(frequency, duration, type = 'correct') {
+        function playTone(frequency, duration, type = 'sine') {
             if (!STATE.audioContext) return;
 
             try {
@@ -444,37 +577,38 @@
                 gain.connect(STATE.audioContext.destination);
 
                 osc.frequency.value = frequency;
-                osc.type = type === 'shoot' ? 'square' : 'sine';
+                osc.type = type;
 
-                gain.gain.setValueAtTime(0.3, STATE.audioContext.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, STATE.audioContext.currentTime + duration);
+                const now = STATE.audioContext.currentTime;
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
 
-                osc.start(STATE.audioContext.currentTime);
-                osc.stop(STATE.audioContext.currentTime + duration);
+                osc.start(now);
+                osc.stop(now + duration);
             } catch (e) {
-                console.warn('Audio playback failed', e);
+                console.warn('Audio playback failed:', e);
             }
         }
 
         function playSFX(type) {
             switch (type) {
                 case 'shoot':
-                    playTone(200, 0.1, 'shoot');
+                    playTone(200, 0.08, 'square');
                     break;
                 case 'correct':
-                    playTone(523, 0.2);
-                    setTimeout(() => playTone(659, 0.2), 100);
+                    playTone(523, 0.15);
+                    setTimeout(() => playTone(659, 0.15), 80);
                     break;
                 case 'smart':
-                    playTone(659, 0.15);
-                    setTimeout(() => playTone(784, 0.15), 80);
-                    setTimeout(() => playTone(880, 0.2), 160);
+                    playTone(659, 0.12);
+                    setTimeout(() => playTone(784, 0.12), 60);
+                    setTimeout(() => playTone(880, 0.15), 120);
                     break;
                 case 'wrong':
-                    playTone(200, 0.3);
+                    playTone(180, 0.25);
                     break;
                 case 'miss':
-                    playTone(150, 0.15);
+                    playTone(140, 0.12);
                     break;
             }
         }
@@ -487,8 +621,8 @@
 
             // Scene
             STATE.scene = new THREE.Scene();
-            STATE.scene.background = new THREE.Color(0x1a1a2e);
-            STATE.scene.fog = new THREE.Fog(0x1a1a2e, 10, 50);
+            STATE.scene.background = new THREE.Color(0x0f0f1e);
+            STATE.scene.fog = new THREE.Fog(0x0f0f1e, 15, 50);
 
             // Camera
             STATE.camera = new THREE.PerspectiveCamera(
@@ -497,7 +631,8 @@
                 0.1,
                 1000
             );
-            STATE.camera.position.z = 15;
+            STATE.camera.position.set(0, 2, 15);
+            STATE.camera.lookAt(0, 0, 0);
 
             // Renderer
             STATE.renderer = new THREE.WebGLRenderer({
@@ -506,20 +641,27 @@
                 powerPreference: 'high-performance'
             });
             STATE.renderer.setSize(window.innerWidth, window.innerHeight);
-            STATE.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            STATE.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Performance limit
 
             // Lighting
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
             STATE.scene.add(ambientLight);
 
-            const pointLight = new THREE.PointLight(0x667eea, 1, 100);
-            pointLight.position.set(0, 10, 10);
-            STATE.scene.add(pointLight);
+            const pointLight1 = new THREE.PointLight(0x667eea, 1, 50);
+            pointLight1.position.set(10, 10, 10);
+            STATE.scene.add(pointLight1);
+
+            const pointLight2 = new THREE.PointLight(0x764ba2, 0.8, 50);
+            pointLight2.position.set(-10, 5, -10);
+            STATE.scene.add(pointLight2);
 
             // Grid floor
-            const gridHelper = new THREE.GridHelper(50, 50, 0x667eea, 0x444444);
-            gridHelper.position.y = -5;
+            const gridHelper = new THREE.GridHelper(60, 60, 0x667eea, 0x333344);
+            gridHelper.position.y = -6;
             STATE.scene.add(gridHelper);
+
+            // Initialize object pools
+            initObjectPools();
 
             window.addEventListener('resize', onWindowResize);
         }
@@ -531,35 +673,97 @@
         }
 
         // ============================================
+        // OBJECT POOLING
+        // ============================================
+        function initObjectPools() {
+            // Pre-create target pool
+            for (let i = 0; i < CONFIG.TARGET_POOL_SIZE; i++) {
+                const target = createTargetMesh();
+                target.visible = false;
+                STATE.scene.add(target);
+                STATE.targetPool.push(target);
+            }
+
+            // Pre-create particle pool
+            for (let i = 0; i < CONFIG.PARTICLE_POOL_SIZE; i++) {
+                const particle = createParticleMesh();
+                particle.visible = false;
+                STATE.scene.add(particle);
+                STATE.particlePool.push(particle);
+            }
+        }
+
+        function createTargetMesh() {
+            const geometry = new THREE.SphereGeometry(0.8, 16, 16);
+            const material = new THREE.MeshPhongMaterial({
+                color: 0x888888,
+                emissive: 0x444444,
+                emissiveIntensity: 0.3
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+
+            // Add text sprite container
+            const sprite = new THREE.Sprite(
+                new THREE.SpriteMaterial({ map: null })
+            );
+            sprite.scale.set(1.5, 1.5, 1);
+            mesh.add(sprite);
+            mesh.userData.sprite = sprite;
+
+            return mesh;
+        }
+
+        function createParticleMesh() {
+            const geometry = new THREE.SphereGeometry(0.1, 4, 4);
+            const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            return new THREE.Mesh(geometry, material);
+        }
+
+        function getTargetFromPool() {
+            return STATE.targetPool.find(t => !t.visible) || createTargetMesh();
+        }
+
+        function getParticleFromPool() {
+            return STATE.particlePool.find(p => !p.visible) || createParticleMesh();
+        }
+
+        function releaseTarget(target) {
+            target.visible = false;
+            target.userData = {};
+        }
+
+        function releaseParticle(particle) {
+            particle.visible = false;
+            particle.userData = {};
+        }
+
+        // ============================================
         // TARGET MANAGEMENT
         // ============================================
         function createTarget(number, isAnswer, isStrategy) {
-            const geometry = new THREE.SphereGeometry(0.8, 16, 16);
+            const target = getTargetFromPool();
 
-            let color = 0x888888; // default
-            if (isAnswer) color = 0x4CAF50; // green for correct answer
-            else if (isStrategy) color = 0xFFEB3B; // yellow for strategy intermediate
+            // Set color
+            let color = 0x888888; // default gray
+            if (isAnswer) color = 0x4CAF50; // green for correct
+            else if (isStrategy) color = 0xFFD700; // gold for strategy
 
-            const material = new THREE.MeshPhongMaterial({
-                color,
-                emissive: color,
-                emissiveIntensity: 0.3
-            });
+            target.material.color.setHex(color);
+            target.material.emissive.setHex(color);
+            target.material.emissiveIntensity = isAnswer ? 0.5 : 0.3;
 
-            const mesh = new THREE.Mesh(geometry, material);
-
-            // Random position
+            // Random position in 3D space
             const angle = Math.random() * Math.PI * 2;
             const radius = 8 + Math.random() * 4;
             const height = -2 + Math.random() * 8;
 
-            mesh.position.set(
+            target.position.set(
                 Math.cos(angle) * radius,
                 height,
                 Math.sin(angle) * radius - 10
             );
 
-            // Add text label
+            // Update text sprite
             const canvas = document.createElement('canvas');
             canvas.width = 256;
             canvas.height = 256;
@@ -571,31 +775,31 @@
             ctx.fillText(number.toString(), 128, 128);
 
             const texture = new THREE.CanvasTexture(canvas);
-            const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
-            const sprite = new THREE.Sprite(spriteMaterial);
-            sprite.scale.set(1.5, 1.5, 1);
-            mesh.add(sprite);
+            target.userData.sprite.material.map = texture;
+            target.userData.sprite.material.needsUpdate = true;
 
-            mesh.userData = {
+            // Movement data
+            target.userData = {
                 number,
                 isAnswer,
                 isStrategy,
                 velocity: new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.03,
                     (Math.random() - 0.5) * 0.02,
-                    (Math.random() - 0.5) * 0.02,
-                    0
-                )
+                    (Math.random() - 0.5) * 0.01
+                ),
+                sprite: target.userData.sprite
             };
 
-            STATE.scene.add(mesh);
-            STATE.targets.push(mesh);
+            target.visible = true;
+            STATE.targets.push(target);
 
-            return mesh;
+            return target;
         }
 
         function spawnTargets() {
             // Clear old targets
-            STATE.targets.forEach(t => STATE.scene.remove(t));
+            STATE.targets.forEach(t => releaseTarget(t));
             STATE.targets = [];
 
             if (!STATE.currentQuestion) return;
@@ -615,18 +819,22 @@
                 target.position.add(target.userData.velocity);
 
                 // Rotate
-                target.rotation.y += 0.01;
+                target.rotation.y += 0.02;
+                target.rotation.x += 0.01;
 
                 // Bounce off boundaries
-                if (Math.abs(target.position.x) > 12) {
+                if (Math.abs(target.position.x) > 14) {
                     target.userData.velocity.x *= -1;
                 }
-                if (target.position.y > 6 || target.position.y < -4) {
+                if (target.position.y > 8 || target.position.y < -5) {
                     target.userData.velocity.y *= -1;
                 }
+                if (target.position.z > 5 || target.position.z < -20) {
+                    target.userData.velocity.z *= -1;
+                }
 
-                // Gentle bobbing
-                target.position.y += Math.sin(Date.now() * 0.001 + target.position.x) * 0.005;
+                // Gentle floating
+                target.position.y += Math.sin(Date.now() * 0.002 + target.position.x) * 0.008;
             });
         }
 
@@ -637,7 +845,7 @@
             try {
                 STATE.videoElement = document.getElementById('hiddenVideo');
 
-                // Request camera
+                // Request camera (NEVER SHOWN)
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: 'user',
@@ -649,7 +857,7 @@
                 STATE.videoElement.srcObject = stream;
                 await STATE.videoElement.play();
 
-                // Initialize MediaPipe Hands
+                // Initialize MediaPipe Hands with PINNED VERSION
                 STATE.hands = new Hands({
                     locateFile: (file) => {
                         return `https://unpkg.com/@mediapipe/hands@0.4.1646424915/${file}`;
@@ -657,124 +865,148 @@
                 });
 
                 STATE.hands.setOptions({
-                    maxNumHands: 2,
+                    maxNumHands: 2, // Support 2 hands for duo mode
                     modelComplexity: 1,
                     minDetectionConfidence: 0.7,
-                    minTrackingConfidence: 0.5
+                    minTrackingConfidence: 0.6
                 });
 
                 STATE.hands.onResults(onHandsResults);
 
-                // Wait for model to load
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                // Wait for model to fully load
+                await new Promise(resolve => setTimeout(resolve, 1500));
 
                 STATE.modelReady = true;
 
             } catch (error) {
-                throw new Error(`Camera/MediaPipe initialization failed: ${error.message}`);
+                throw new Error(`Camera/MediaPipe init failed: ${error.message}`);
             }
         }
 
         function onHandsResults(results) {
             STATE.handsData = results.multiHandLandmarks || [];
             STATE.lastLandmarks = results;
+
+            // Assign stable hand IDs based on handedness
+            if (results.multiHandedness) {
+                results.multiHandedness.forEach((handedness, idx) => {
+                    const label = handedness.label; // "Left" or "Right"
+                    const handIndex = label === 'Left' ? 0 : 1;
+                    if (STATE.handStates[handIndex]) {
+                        STATE.handStates[handIndex].handedness = label;
+                        STATE.handStates[handIndex].landmarkIndex = idx;
+                    }
+                });
+            }
         }
 
         // ============================================
-        // HAND GESTURE FSM
+        // HAND GESTURE FSM WITH HYSTERESIS
         // ============================================
-        const GESTURE_CONFIG = {
-            ARM_THRESHOLD: 0.08,
-            FIRE_THRESHOLD: 0.15,
-            V_MIN: 0.01,
-            COOLDOWN_MS: 300
-        };
-
         function updateHandGestures(deltaTime) {
+            const now = Date.now();
+
+            // Clear lasers if no hands
             if (!STATE.handsData || STATE.handsData.length === 0) {
-                // Reset all hands to idle
-                STATE.handStates.forEach(s => s.state = 'idle');
-                STATE.lasers = [];
+                STATE.handStates.forEach((hs, i) => {
+                    hs.state = 'idle';
+                    if (STATE.lasers[i]) {
+                        STATE.scene.remove(STATE.lasers[i]);
+                        STATE.lasers[i] = null;
+                    }
+                });
                 return;
             }
 
-            STATE.handsData.forEach((landmarks, handIndex) => {
-                if (handIndex >= 2) return;
+            // Update each hand
+            STATE.handStates.forEach((handState, handIndex) => {
+                // Find landmarks for this hand
+                const landmarkIndex = handState.landmarkIndex;
+                if (landmarkIndex === undefined || !STATE.handsData[landmarkIndex]) {
+                    handState.state = 'idle';
+                    if (STATE.lasers[handIndex]) {
+                        STATE.scene.remove(STATE.lasers[handIndex]);
+                        STATE.lasers[handIndex] = null;
+                    }
+                    return;
+                }
 
-                let handState = STATE.handStates[handIndex];
-                if (!handState.state) handState.state = 'idle';
+                const landmarks = STATE.handsData[landmarkIndex];
 
-                // Extract key landmarks
+                // Extract key points
                 const indexTip = landmarks[8];
                 const thumbTip = landmarks[4];
-                const indexMCP = landmarks[5];
                 const wrist = landmarks[0];
+                const indexMCP = landmarks[5];
 
-                // Calculate distance and velocity
+                // Calculate thumb-index distance
                 const distance = Math.sqrt(
                     Math.pow(thumbTip.x - indexTip.x, 2) +
                     Math.pow(thumbTip.y - indexTip.y, 2) +
                     Math.pow(thumbTip.z - indexTip.z, 2)
                 );
 
-                const thumbSpeed = handState.lastThumbPos ?
+                // Calculate thumb velocity
+                const thumbSpeed = handState.lastPos ?
                     Math.sqrt(
-                        Math.pow(thumbTip.x - handState.lastThumbPos.x, 2) +
-                        Math.pow(thumbTip.y - handState.lastThumbPos.y, 2)
+                        Math.pow(thumbTip.x - handState.lastPos.x, 2) +
+                        Math.pow(thumbTip.y - handState.lastPos.y, 2)
                     ) : 0;
 
-                handState.lastThumbPos = { x: thumbTip.x, y: thumbTip.y, z: thumbTip.z };
+                handState.lastPos = { x: thumbTip.x, y: thumbTip.y, z: thumbTip.z };
 
-                // Calculate aim direction (from wrist through index finger)
+                // Calculate aim direction (wrist -> index tip)
                 const aimDir = new THREE.Vector3(
                     indexTip.x - wrist.x,
-                    -(indexTip.y - wrist.y), // Flip Y for screen coords
+                    -(indexTip.y - wrist.y),
                     indexTip.z - wrist.z
                 ).normalize();
 
-                // Convert to world coordinates (flip for camera space)
-                const worldX = (indexTip.x - 0.5) * 30;
-                const worldY = -(indexTip.y - 0.5) * 20;
-                const worldZ = -10;
+                // Convert to world coordinates
+                const worldX = (indexTip.x - 0.5) * 35;
+                const worldY = -(indexTip.y - 0.5) * 25;
+                const worldZ = -8;
 
                 const startPos = new THREE.Vector3(worldX, worldY, worldZ);
 
-                // Update laser visualization
+                // Update laser
                 updateLaser(handIndex, startPos, aimDir);
 
-                // FSM state transitions
+                // FSM with hysteresis
+                const { ARM_THRESHOLD, FIRE_THRESHOLD, HYSTERESIS, V_MIN_THUMB, COOLDOWN_MS } = CONFIG.GESTURE;
+
                 switch (handState.state) {
                     case 'idle':
-                        if (landmarks && distance < GESTURE_CONFIG.ARM_THRESHOLD * 2) {
+                        if (distance < ARM_THRESHOLD * 2) {
                             handState.state = 'aiming';
                         }
                         break;
 
                     case 'aiming':
-                        if (distance < GESTURE_CONFIG.ARM_THRESHOLD) {
+                        if (distance < ARM_THRESHOLD - HYSTERESIS) {
                             handState.state = 'armed';
-                            handState.armedTime = Date.now();
-                        } else if (!landmarks) {
+                            handState.armedTime = now;
+                        } else if (distance > ARM_THRESHOLD * 3) {
                             handState.state = 'idle';
                         }
                         break;
 
                     case 'armed':
-                        if (distance > GESTURE_CONFIG.FIRE_THRESHOLD && thumbSpeed > GESTURE_CONFIG.V_MIN) {
+                        if (distance > FIRE_THRESHOLD + HYSTERESIS && thumbSpeed > V_MIN_THUMB) {
                             handState.state = 'fired';
                             fireShot(startPos, aimDir, handIndex);
-                        } else if (Date.now() - handState.armedTime > 2000) {
+                        } else if (now - handState.armedTime > 2500) {
                             handState.state = 'aiming';
                         }
                         break;
 
                     case 'fired':
                         handState.state = 'cooldown';
-                        handState.cooldownStart = Date.now();
+                        handState.cooldownEnd = now + COOLDOWN_MS;
                         break;
 
                     case 'cooldown':
-                        if (Date.now() - handState.cooldownStart > GESTURE_CONFIG.COOLDOWN_MS) {
+                        if (now >= handState.cooldownEnd) {
                             handState.state = 'aiming';
                         }
                         break;
@@ -783,15 +1015,14 @@
         }
 
         function updateLaser(handIndex, startPos, direction) {
-            // Remove old laser for this hand
-            const oldLaser = STATE.lasers[handIndex];
-            if (oldLaser) {
-                STATE.scene.remove(oldLaser);
+            // Remove old laser
+            if (STATE.lasers[handIndex]) {
+                STATE.scene.remove(STATE.lasers[handIndex]);
             }
 
-            // Create new laser beam
+            // Create laser beam
             const geometry = new THREE.BufferGeometry();
-            const endPos = startPos.clone().add(direction.clone().multiplyScalar(50));
+            const endPos = startPos.clone().add(direction.clone().multiplyScalar(60));
 
             const positions = new Float32Array([
                 startPos.x, startPos.y, startPos.z,
@@ -800,10 +1031,12 @@
 
             geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
+            const color = handIndex === 0 ? 0xff3333 : 0x33ff33;
             const material = new THREE.LineBasicMaterial({
-                color: handIndex === 0 ? 0xff0000 : 0x00ff00,
-                opacity: 0.6,
-                transparent: true
+                color,
+                opacity: 0.7,
+                transparent: true,
+                linewidth: 2
             });
 
             const laser = new THREE.Line(geometry, material);
@@ -814,36 +1047,43 @@
         function fireShot(origin, direction, handIndex) {
             playSFX('shoot');
 
+            // Determine player index
+            const playerIndex = STATE.gameMode === 'duo' ? handIndex : STATE.currentPlayerIndex;
+
+            STATE.players[playerIndex].shots++;
+
             // Create muzzle flash
             createMuzzleFlash(origin);
 
             // Raycast
             const raycaster = new THREE.Raycaster(origin, direction);
-            const intersects = raycaster.intersectObjects(STATE.targets);
+            const intersects = raycaster.intersectObjects(STATE.targets.filter(t => t.visible));
 
             if (intersects.length > 0) {
                 const hit = intersects[0].object;
-                handleTargetHit(hit);
+                handleTargetHit(hit, playerIndex);
             } else {
                 showFeedback('MISS', '#888888');
                 playSFX('miss');
             }
         }
 
-        function handleTargetHit(target) {
+        function handleTargetHit(target, playerIndex) {
             const { isAnswer, isStrategy, number } = target.userData;
 
             // Remove target
-            STATE.scene.remove(target);
+            releaseTarget(target);
             STATE.targets = STATE.targets.filter(t => t !== target);
 
+            STATE.players[playerIndex].hits++;
+
             // Create explosion
-            createExplosion(target.position, isAnswer ? 0x4CAF50 : isStrategy ? 0xFFEB3B : 0xff0000);
+            createExplosion(target.position, isAnswer ? 0x4CAF50 : isStrategy ? 0xFFD700 : 0xff4444);
 
             if (isAnswer) {
                 // Correct answer
-                STATE.score += 100;
-                STATE.streak++;
+                STATE.players[playerIndex].score += 100;
+                STATE.players[playerIndex].streak++;
 
                 showFeedback('CORRECT! +100', '#4CAF50');
                 playSFX('correct');
@@ -851,21 +1091,19 @@
                 nextQuestion();
 
             } else if (isStrategy) {
-                // Strategy intermediate - smart bonus
-                STATE.score += 50;
-                STATE.streak++;
+                // Smart intermediate
+                STATE.players[playerIndex].score += 50;
+                STATE.players[playerIndex].streak++;
 
                 showFeedback('SMART! +50', '#FFD700');
                 playSFX('smart');
 
-                // Keep playing, remove this target
-
             } else {
                 // Wrong answer
-                STATE.score = Math.max(0, STATE.score - 20);
-                STATE.streak = Math.max(0, STATE.streak - 1);
+                STATE.players[playerIndex].score = Math.max(0, STATE.players[playerIndex].score - 20);
+                STATE.players[playerIndex].streak = Math.max(0, STATE.players[playerIndex].streak - 1);
 
-                showFeedback('WRONG -20', '#ff0000');
+                showFeedback('WRONG -20', '#ff4444');
                 playSFX('wrong');
             }
 
@@ -876,44 +1114,40 @@
         // VFX SYSTEM
         // ============================================
         function createMuzzleFlash(position) {
-            const geometry = new THREE.SphereGeometry(0.3, 8, 8);
-            const material = new THREE.MeshBasicMaterial({
-                color: 0xffff00,
-                transparent: true,
-                opacity: 1
-            });
-            const flash = new THREE.Mesh(geometry, material);
+            const flash = getParticleFromPool();
             flash.position.copy(position);
+            flash.scale.setScalar(0.5);
+            flash.material.color.setHex(0xffff00);
+            flash.material.opacity = 1;
+            flash.visible = true;
 
-            STATE.scene.add(flash);
-
-            setTimeout(() => {
-                STATE.scene.remove(flash);
-            }, 100);
+            setTimeout(() => releaseParticle(flash), 80);
         }
 
         function createExplosion(position, color) {
-            const particleCount = 20;
+            const particleCount = Math.min(25, CONFIG.PARTICLE_POOL_SIZE - STATE.particles.length);
 
             for (let i = 0; i < particleCount; i++) {
-                const geometry = new THREE.SphereGeometry(0.1, 4, 4);
-                const material = new THREE.MeshBasicMaterial({ color });
-                const particle = new THREE.Mesh(geometry, material);
+                const particle = getParticleFromPool();
 
                 particle.position.copy(position);
+                particle.material.color.setHex(color);
+                particle.material.opacity = 1;
+                particle.scale.setScalar(1);
 
                 const velocity = new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.5,
-                    (Math.random() - 0.5) * 0.5,
-                    (Math.random() - 0.5) * 0.5
+                    (Math.random() - 0.5) * 0.4,
+                    (Math.random() - 0.5) * 0.4,
+                    (Math.random() - 0.5) * 0.4
                 );
 
                 particle.userData = {
                     velocity,
-                    life: 1.0
+                    life: 1.0,
+                    maxLife: 1.0
                 };
 
-                STATE.scene.add(particle);
+                particle.visible = true;
                 STATE.particles.push(particle);
             }
         }
@@ -921,13 +1155,13 @@
         function updateParticles(deltaTime) {
             STATE.particles = STATE.particles.filter(p => {
                 p.position.add(p.userData.velocity);
-                p.userData.velocity.y -= 0.01; // gravity
-                p.userData.life -= deltaTime * 2;
+                p.userData.velocity.y -= 0.015; // Gravity
+                p.userData.life -= deltaTime * 2.5;
 
-                p.material.opacity = p.userData.life;
+                p.material.opacity = p.userData.life / p.userData.maxLife;
 
                 if (p.userData.life <= 0) {
-                    STATE.scene.remove(p);
+                    releaseParticle(p);
                     return false;
                 }
                 return true;
@@ -960,18 +1194,32 @@
         }
 
         function updateHUD() {
-            document.getElementById('scoreDisplay').textContent = STATE.score;
-            document.getElementById('timeDisplay').textContent = Math.max(0, STATE.timeLeft);
-            document.getElementById('streakValue').textContent = STATE.streak;
-            document.getElementById('questionCount').textContent = STATE.questionIndex;
+            // Mode
+            document.getElementById('modeDisplay').textContent =
+                STATE.gameMode === 'solo' ? 'Solo' : STATE.gameMode === 'duo' ? '2-Player' : 'Party';
 
-            const streakDisplay = document.getElementById('streakDisplay');
-            if (STATE.streak >= 5) {
-                streakDisplay.classList.add('streak-display');
-            } else {
-                streakDisplay.classList.remove('streak-display');
+            // Time
+            document.getElementById('timeDisplay').textContent = Math.ceil(Math.max(0, STATE.timeLeft));
+
+            // Player scores
+            const playerScores = document.getElementById('playerScores');
+            playerScores.innerHTML = '';
+
+            const activePlayers = STATE.gameMode === 'duo' ? 2 : 1;
+
+            for (let i = 0; i < activePlayers; i++) {
+                const p = STATE.players[i];
+                p.accuracy = p.shots > 0 ? Math.round((p.hits / p.shots) * 100) : 0;
+
+                const div = document.createElement('div');
+                div.className = `player-score p${i + 1}`;
+                div.innerHTML = `
+                    P${i + 1}: ${p.score} | Streak: ${p.streak} | Acc: ${p.accuracy}%
+                `;
+                playerScores.appendChild(div);
             }
 
+            // Question
             if (STATE.currentQuestion) {
                 document.getElementById('questionDisplay').textContent = STATE.currentQuestion.question;
             }
@@ -980,7 +1228,7 @@
         function nextQuestion() {
             STATE.questionIndex++;
 
-            if (STATE.questionIndex >= 10) {
+            if (STATE.questionIndex >= CONFIG.QUESTIONS_PER_ROUND) {
                 endRound();
                 return;
             }
@@ -993,15 +1241,6 @@
         function endRound() {
             STATE.isRunning = false;
 
-            // Save player score
-            const player = STATE.players[STATE.currentPlayerIndex] || {
-                name: `Player ${STATE.currentPlayerIndex + 1}`,
-                scores: []
-            };
-            player.scores.push(STATE.score);
-            STATE.players[STATE.currentPlayerIndex] = player;
-
-            // Show leaderboard
             showLeaderboard();
         }
 
@@ -1009,12 +1248,11 @@
             const leaderboard = document.getElementById('leaderboardDisplay');
             leaderboard.innerHTML = '';
 
-            const sorted = [...STATE.players]
-                .map((p, i) => ({
-                    name: p.name,
-                    score: p.scores[p.scores.length - 1] || 0,
-                    index: i
-                }))
+            const activePlayers = STATE.gameMode === 'party' ? STATE.players.length :
+                                   STATE.gameMode === 'duo' ? 2 : 1;
+
+            const sorted = STATE.players.slice(0, activePlayers)
+                .map((p, i) => ({ ...p, index: i }))
                 .sort((a, b) => b.score - a.score);
 
             sorted.forEach((p, rank) => {
@@ -1022,7 +1260,7 @@
                 entry.className = 'leaderboard-entry';
                 entry.innerHTML = `
                     <span>${rank + 1}. ${p.name}</span>
-                    <span>${p.score} pts</span>
+                    <span>${p.score} pts (${p.accuracy}% acc)</span>
                 `;
                 leaderboard.appendChild(entry);
             });
@@ -1033,19 +1271,17 @@
         // ============================================
         // GAME LOOP
         // ============================================
-        let lastTime = 0;
-
         function gameLoop(timestamp) {
-            if (!STATE.isRunning) return;
+            if (!STATE.isRunning || STATE.isPaused) return;
 
-            const deltaTime = (timestamp - lastTime) / 1000;
-            lastTime = timestamp;
+            const deltaTime = (timestamp - STATE.lastRenderTime) / 1000;
+            STATE.lastRenderTime = timestamp;
 
             // Update time
             const elapsed = (timestamp - STATE.gameStartTime) / 1000;
-            STATE.timeLeft = Math.max(0, 60 - elapsed);
+            STATE.timeLeft = Math.max(0, CONFIG.TIME_LIMIT - elapsed);
 
-            if (STATE.timeLeft <= 0 && STATE.questionIndex < 10) {
+            if (STATE.timeLeft <= 0 && STATE.questionIndex < CONFIG.QUESTIONS_PER_ROUND) {
                 endRound();
                 return;
             }
@@ -1062,7 +1298,7 @@
         }
 
         async function detectionLoop() {
-            if (!STATE.isRunning || !STATE.modelReady) return;
+            if (!STATE.isRunning || STATE.isPaused || !STATE.modelReady) return;
 
             const now = Date.now();
 
@@ -1079,35 +1315,49 @@
                 }
             }
 
-            if (STATE.isRunning) {
-                setTimeout(detectionLoop, 16); // ~60 FPS check
+            if (STATE.isRunning && !STATE.isPaused) {
+                setTimeout(detectionLoop, 16);
             }
         }
 
         // ============================================
         // GAME LIFECYCLE
         // ============================================
-        async function startGame() {
+        async function startGame(mode) {
             try {
+                STATE.gameMode = mode;
+
                 showOverlay('loadingOverlay');
 
                 // Initialize systems
-                initAudio();
-                initThreeJS();
-                await initMediaPipe();
+                if (!STATE.audioContext) {
+                    initAudio();
+                }
+
+                if (!STATE.scene) {
+                    initThreeJS();
+                }
+
+                if (!STATE.modelReady) {
+                    await initMediaPipe();
+                }
 
                 // Reset game state
-                STATE.score = 0;
-                STATE.streak = 0;
                 STATE.questionIndex = 0;
-                STATE.timeLeft = 60;
-                STATE.handStates = [{}, {}];
+                STATE.timeLeft = CONFIG.TIME_LIMIT;
+                STATE.handStates = [
+                    { state: 'idle', handedness: null, lastPos: null, cooldownEnd: 0 },
+                    { state: 'idle', handedness: null, lastPos: null, cooldownEnd: 0 }
+                ];
 
-                // Initialize players if needed
-                if (STATE.players.length === 0) {
-                    STATE.players = [{ name: 'Player 1', scores: [] }];
-                    STATE.currentPlayerIndex = 0;
-                }
+                // Reset players
+                STATE.players.forEach(p => {
+                    p.score = 0;
+                    p.streak = 0;
+                    p.accuracy = 0;
+                    p.shots = 0;
+                    p.hits = 0;
+                });
 
                 // Start first question
                 STATE.currentQuestion = generateQuestion();
@@ -1118,10 +1368,11 @@
                 hideAllOverlays();
                 updateHUD();
 
-                // Start game loops
+                // Start loops
                 STATE.isRunning = true;
+                STATE.isPaused = false;
                 STATE.gameStartTime = performance.now();
-                lastTime = STATE.gameStartTime;
+                STATE.lastRenderTime = STATE.gameStartTime;
 
                 requestAnimationFrame(gameLoop);
                 detectionLoop();
@@ -1136,11 +1387,11 @@
         }
 
         function nextRound() {
-            STATE.currentPlayerIndex = (STATE.currentPlayerIndex + 1) % STATE.players.length;
+            startGame(STATE.gameMode);
+        }
 
-            // If back to first player, could add new player option here
-
-            startGame();
+        function backToMenu() {
+            window.location.reload();
         }
 
         function showError(message) {
@@ -1154,12 +1405,12 @@
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
                 STATE.isPaused = true;
-                if (STATE.audioContext) {
+                if (STATE.audioContext && STATE.audioContext.state === 'running') {
                     STATE.audioContext.suspend();
                 }
             } else {
                 STATE.isPaused = false;
-                if (STATE.audioContext) {
+                if (STATE.audioContext && STATE.audioContext.state === 'suspended') {
                     STATE.audioContext.resume();
                 }
             }
@@ -1169,13 +1420,23 @@
         // INITIALIZATION
         // ============================================
         window.addEventListener('load', () => {
-            console.log('✅ Game loaded. Tap Start to begin!');
+            console.log('✅ Game loaded. Choose mode to begin!');
         });
 
-        // Prevent bounce/scroll on mobile
+        // Prevent scroll/bounce on mobile
         document.body.addEventListener('touchmove', (e) => {
             e.preventDefault();
         }, { passive: false });
+
+        // Prevent double-tap zoom
+        let lastTap = 0;
+        document.addEventListener('touchend', (e) => {
+            const now = Date.now();
+            if (now - lastTap < 300) {
+                e.preventDefault();
+            }
+            lastTap = now;
+        });
 
     </script>
 </body>
