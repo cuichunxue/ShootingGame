@@ -465,7 +465,7 @@
             GESTURE: {
                 EXTEND_THRESHOLD: 0.08,
                 CURL_THRESHOLD: 0.05,
-                COOLDOWN_MS: 450  // Increased cooldown between shots
+                COOLDOWN_MS: 350  // Balanced cooldown between shots
             },
             MAX_TARGETS: 5,
             TARGET_POOL_SIZE: 8,
@@ -1369,24 +1369,24 @@
 
         // ============================================
         // HAND GESTURE FSM - FLICK UP TO SHOOT
-        // Thumb up + Index extended = Aim
-        // Quick upward flick = Fire
+        // Improved classification of: tremor vs movement vs shooting
         // ============================================
+
+        // Shooting detection
         let prevIndexY = 0.5;
         let flickVelocity = 0;
-        let smoothedVelocity = 0;  // Smoothed velocity to prevent jitter
-        let velocityHistory = [0, 0, 0, 0, 0];  // Track last 5 frames
-        let stableFrames = 0;  // Count frames where finger is stable before flick
-        const FLICK_THRESHOLD = 0.055;  // How fast the upward movement needs to be
-        const STABLE_THRESHOLD = 0.015;  // Max movement to be considered "stable"
-        const MIN_STABLE_FRAMES = 3;  // Need to be stable for 3 frames before flick counts
+        const FLICK_THRESHOLD = 0.05;  // Threshold for shooting flick
+        let canShoot = true;  // Prevents rapid fire
 
-        // Position smoothing for stable crosshair
-        let positionHistory = [];
-        const POSITION_HISTORY_SIZE = 8;  // Average over 8 frames
+        // Position tracking for movement classification
+        let posHistory = [];  // [{x, y, time}, ...]
+        const POS_HISTORY_SIZE = 6;
         let smoothedX = 0;
         let smoothedY = 0;
-        let lastIntentionalMoveTime = 0;
+
+        // Movement direction tracking (to detect consistent vs erratic movement)
+        let moveDirectionX = 0;
+        let moveDirectionY = 0;
 
         function updateHandGestures() {
             const now = performance.now();
@@ -1431,97 +1431,79 @@
             // Gun gesture: thumb up is required
             const isGunPose = isThumbUp;
 
+            // === SHOOTING DETECTION ===
             // Detect flick up (Y decreases when moving up in screen coordinates)
             const currentY = indexTip.y;
             flickVelocity = prevIndexY - currentY;  // Positive = moving up
             prevIndexY = currentY;
 
-            // Track velocity history for smoothing
-            velocityHistory.shift();
-            velocityHistory.push(flickVelocity);
+            // Simple and responsive flick detection
+            const isFlickUp = flickVelocity > FLICK_THRESHOLD && canShoot;
 
-            // Calculate smoothed velocity (average of recent frames)
-            smoothedVelocity = velocityHistory.reduce((a, b) => a + b, 0) / velocityHistory.length;
-
-            // Track stable frames (finger not moving much)
-            const absVelocity = Math.abs(flickVelocity);
-            if (absVelocity < STABLE_THRESHOLD) {
-                stableFrames++;
-            } else if (flickVelocity > FLICK_THRESHOLD) {
-                // Only count as flick if we were stable before
-                // Don't reset stable frames during the flick itself
-            } else {
-                stableFrames = 0;  // Reset if moving but not flicking
-            }
-
-            // Flick is valid only if: was stable before AND sudden upward movement
-            const isFlickUp = flickVelocity > FLICK_THRESHOLD && stableFrames >= MIN_STABLE_FRAMES;
-
-            // Mirror mode crosshair position (use index tip for aiming)
-            // Reduced range to match visible balloon area
+            // === CROSSHAIR POSITION (Movement vs Tremor Classification) ===
             const rawX = -(indexTip.x - 0.5) * 22;
             const rawY = -(indexTip.y - 0.5) * 16 + 1.5;
             const worldZ = 0;
 
-            // Add to position history for averaging
-            positionHistory.push({ x: rawX, y: rawY, time: now });
-            if (positionHistory.length > POSITION_HISTORY_SIZE) {
-                positionHistory.shift();
+            // Add to position history
+            posHistory.push({ x: rawX, y: rawY, time: now });
+            if (posHistory.length > POS_HISTORY_SIZE) {
+                posHistory.shift();
             }
 
-            // Calculate averaged position (removes jitter)
-            let avgX = 0, avgY = 0;
-            positionHistory.forEach(p => {
-                avgX += p.x;
-                avgY += p.y;
-            });
-            avgX /= positionHistory.length;
-            avgY /= positionHistory.length;
-
-            // Calculate movement from current smoothed position
-            const dx = avgX - smoothedX;
-            const dy = avgY - smoothedY;
+            // Calculate current movement delta
+            const dx = rawX - smoothedX;
+            const dy = rawY - smoothedY;
             const distance = Math.sqrt(dx * dx + dy * dy);
 
-            // Calculate movement speed (to detect intentional vs unconscious movement)
-            let positionVariance = 0;
-            if (positionHistory.length >= 3) {
-                // Check how much the position varies in recent history
-                const recentPositions = positionHistory.slice(-3);
-                const centerX = recentPositions.reduce((a, p) => a + p.x, 0) / 3;
-                const centerY = recentPositions.reduce((a, p) => a + p.y, 0) / 3;
-                recentPositions.forEach(p => {
-                    positionVariance += Math.sqrt((p.x - centerX) ** 2 + (p.y - centerY) ** 2);
-                });
-                positionVariance /= 3;
+            // Check if movement is consistent (same direction) or erratic (tremor)
+            let isConsistentMove = false;
+            if (posHistory.length >= 3) {
+                // Calculate direction of recent movement
+                const recent = posHistory.slice(-3);
+                const dirX = recent[2].x - recent[0].x;
+                const dirY = recent[2].y - recent[0].y;
+                const dirMag = Math.sqrt(dirX * dirX + dirY * dirY);
+
+                // Check if current movement aligns with recent direction
+                if (dirMag > 0.3) {
+                    // Normalize and compare
+                    const normDirX = dirX / dirMag;
+                    const normDirY = dirY / dirMag;
+                    const normDx = distance > 0.01 ? dx / distance : 0;
+                    const normDy = distance > 0.01 ? dy / distance : 0;
+                    const dotProduct = normDirX * normDx + normDirY * normDy;
+                    isConsistentMove = dotProduct > 0.5;  // Same general direction
+                }
             }
 
-            // Deadzone and intentional movement detection
-            const DEADZONE = 0.8;  // Increased deadzone for stability
-            const JITTER_THRESHOLD = 0.15;  // If variance is low, it's intentional
-            const isIntentionalMove = distance > DEADZONE && positionVariance < JITTER_THRESHOLD;
-            const isLargeMove = distance > 2.0;  // Large movements are always intentional
+            // Movement classification
+            const SMALL_MOVE = 0.3;   // Small threshold - quick response
+            const LARGE_MOVE = 1.5;   // Large move always accepted
 
             let worldX = smoothedX;
             let worldY = smoothedY;
+            let moveSpeed = 0;
 
-            if (isIntentionalMove || isLargeMove) {
-                // Intentional movement: smoothly move towards target
-                const moveSpeed = isLargeMove ? 0.5 : 0.3;
-                smoothedX += dx * moveSpeed;
-                smoothedY += dy * moveSpeed;
-                worldX = smoothedX;
-                worldY = smoothedY;
-                lastIntentionalMoveTime = now;
-            } else if (now - lastIntentionalMoveTime > 200) {
-                // If no intentional movement for 200ms, slowly drift towards averaged position
-                // This helps recover from accumulated drift
-                smoothedX += dx * 0.05;
-                smoothedY += dy * 0.05;
-                worldX = smoothedX;
-                worldY = smoothedY;
+            if (distance > LARGE_MOVE) {
+                // Large movement: always follow quickly
+                moveSpeed = 0.6;
+            } else if (distance > SMALL_MOVE && isConsistentMove) {
+                // Consistent directional movement: follow at medium speed
+                moveSpeed = 0.4;
+            } else if (distance > SMALL_MOVE) {
+                // Movement but erratic: follow slowly (might be tremor)
+                moveSpeed = 0.15;
+            } else {
+                // Very small movement: minimal response (tremor rejection)
+                moveSpeed = 0.05;
             }
-            // Otherwise, keep crosshair at current position (stable)
+
+            // Apply movement
+            smoothedX += dx * moveSpeed;
+            smoothedY += dy * moveSpeed;
+            worldX = smoothedX;
+            worldY = smoothedY;
 
             // ALWAYS show crosshair when hand is detected
             updateCrosshairPosition(worldX, worldY, worldZ);
@@ -1546,8 +1528,7 @@
                     // Fire when quick upward flick detected
                     if (isGunPose && isFlickUp) {
                         STATE.handState.state = 'fired';
-                        stableFrames = 0;  // Reset stable frames after firing
-                        velocityHistory = [0, 0, 0, 0, 0];  // Clear velocity history
+                        canShoot = false;  // Prevent rapid fire
                         fireShot();
                     } else if (!isGunPose) {
                         STATE.handState.state = 'idle';
@@ -1561,6 +1542,7 @@
 
                 case 'cooldown':
                     if (now >= STATE.handState.cooldownEnd) {
+                        canShoot = true;  // Re-enable shooting
                         if (isGunPose && isIndexExtended) {
                             STATE.handState.state = 'ready';
                         } else if (isGunPose) {
