@@ -32,18 +32,13 @@
         }
 
         #hiddenVideo {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 160px;
-            height: 120px;
-            border-radius: 12px;
-            border: 3px solid #667eea;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-            z-index: 1000;
-            transform: scaleX(-1);  /* Mirror for natural feel */
-            object-fit: cover;
-            background: #000;
+            position: absolute;
+            top: -9999px;
+            left: -9999px;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            pointer-events: none;
         }
 
         .overlay {
@@ -986,10 +981,14 @@
         }
 
         // ============================================
-        // HAND GESTURE FSM - GUN GESTURE
+        // HAND GESTURE FSM - FLICK UP TO SHOOT
         // Thumb up + Index extended = Aim
-        // Thumb up + Index curled = Fire
+        // Quick upward flick = Fire
         // ============================================
+        let prevIndexY = 0.5;
+        let flickVelocity = 0;
+        const FLICK_THRESHOLD = 0.025;  // How fast the upward movement needs to be
+
         function updateHandGestures() {
             const now = performance.now();
 
@@ -997,6 +996,8 @@
                 STATE.handState.state = 'idle';
                 if (STATE.crosshair) STATE.crosshair.visible = false;
                 updateHandStatus(false);
+                prevIndexY = 0.5;
+                flickVelocity = 0;
                 return;
             }
 
@@ -1018,7 +1019,7 @@
                 Math.pow(thumbTip.x - thumbMCP.x, 2) +
                 Math.pow(thumbTip.y - thumbMCP.y, 2)
             );
-            const isThumbUp = thumbLength > 0.06;  // More relaxed threshold
+            const isThumbUp = thumbLength > 0.06;
 
             // Check index finger extension
             const indexLength = Math.sqrt(
@@ -1027,43 +1028,47 @@
                 Math.pow(indexTip.z - indexPIP.z, 2)
             );
             const isIndexExtended = indexLength > 0.06;
-            const isIndexCurled = indexLength < 0.04;
 
             // Gun gesture: thumb up is required
             const isGunPose = isThumbUp;
 
+            // Detect flick up (Y decreases when moving up in screen coordinates)
+            const currentY = indexTip.y;
+            flickVelocity = prevIndexY - currentY;  // Positive = moving up
+            prevIndexY = currentY;
+
+            const isFlickUp = flickVelocity > FLICK_THRESHOLD;
+
             // Mirror mode crosshair position (use index tip for aiming)
             const worldX = -(indexTip.x - 0.5) * 28;
             const worldY = -(indexTip.y - 0.5) * 20 + 2;
-            const worldZ = 0;  // Closer to camera for visibility
+            const worldZ = 0;
 
             // ALWAYS show crosshair when hand is detected
             updateCrosshairPosition(worldX, worldY, worldZ);
             if (STATE.crosshair) {
                 STATE.crosshair.visible = true;
-                // Change color based on state: green = gun pose, yellow = hand detected but no gun pose
+                // Change color based on state
                 if (isGunPose && isIndexExtended) {
                     setCrosshairColor(0x00ff00);  // Green - ready to fire
                 } else if (isGunPose) {
-                    setCrosshairColor(0xffff00);  // Yellow - gun pose but finger not extended
+                    setCrosshairColor(0xffff00);  // Yellow
                 } else {
-                    setCrosshairColor(0x888888);  // Gray - hand detected, no gun pose
+                    setCrosshairColor(0x888888);  // Gray
                 }
             }
 
             switch (STATE.handState.state) {
                 case 'idle':
-                    // Enter ready state when gun pose with index extended
                     if (isGunPose && isIndexExtended) STATE.handState.state = 'ready';
                     break;
 
                 case 'ready':
-                    // Fire when index curled while in gun pose
-                    if (isGunPose && isIndexCurled) {
+                    // Fire when quick upward flick detected
+                    if (isGunPose && isFlickUp) {
                         STATE.handState.state = 'fired';
                         fireShot();
                     } else if (!isGunPose) {
-                        // Lost gun pose, go back to idle
                         STATE.handState.state = 'idle';
                     }
                     break;
@@ -1075,11 +1080,10 @@
 
                 case 'cooldown':
                     if (now >= STATE.handState.cooldownEnd) {
-                        // Return to ready if still in gun pose with index extended
                         if (isGunPose && isIndexExtended) {
                             STATE.handState.state = 'ready';
                         } else if (isGunPose) {
-                            STATE.handState.state = 'ready';  // Allow re-aim
+                            STATE.handState.state = 'ready';
                         } else {
                             STATE.handState.state = 'idle';
                         }
