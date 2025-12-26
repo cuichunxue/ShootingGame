@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>Gesture Shooting Math Game</title>
+    <title>Math Shooting Game</title>
     <style>
         * {
             margin: 0;
@@ -19,11 +19,7 @@
             overflow: hidden;
             background: #000;
             touch-action: none;
-            /* Safe area insets for notched devices */
-            padding-top: env(safe-area-inset-top);
-            padding-bottom: env(safe-area-inset-bottom);
-            padding-left: env(safe-area-inset-left);
-            padding-right: env(safe-area-inset-right);
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
 
         #gameCanvas {
@@ -35,6 +31,7 @@
             left: 0;
         }
 
+        /* NEVER DISPLAY CAMERA */
         #hiddenVideo {
             position: absolute;
             top: -9999px;
@@ -89,17 +86,18 @@
             margin: 0.5rem;
             font-size: 1.2rem;
             border: none;
-            border-radius: 8px;
+            border-radius: 12px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             cursor: pointer;
-            transition: transform 0.2s;
+            transition: transform 0.2s, box-shadow 0.2s;
             font-weight: bold;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
         }
 
         .btn:active {
             transform: scale(0.95);
+            box-shadow: 0 2px 10px rgba(102, 126, 234, 0.3);
         }
 
         .btn-group {
@@ -113,10 +111,10 @@
             border: 4px solid rgba(255, 255, 255, 0.1);
             border-top: 4px solid #667eea;
             border-radius: 50%;
-            width: 50px;
-            height: 50px;
+            width: 60px;
+            height: 60px;
             animation: spin 1s linear infinite;
-            margin-bottom: 1rem;
+            margin-bottom: 1.5rem;
         }
 
         @keyframes spin {
@@ -124,11 +122,29 @@
             100% { transform: rotate(360deg); }
         }
 
+        .progress-bar {
+            width: 80%;
+            max-width: 400px;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 1rem;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        /* MINIMAL HUD */
         #hud {
             position: fixed;
-            top: env(safe-area-inset-top);
-            left: env(safe-area-inset-left);
-            right: env(safe-area-inset-right);
+            top: env(safe-area-inset-top, 0);
+            left: env(safe-area-inset-left, 0);
+            right: env(safe-area-inset-right, 0);
             padding: 1rem;
             z-index: 100;
             color: white;
@@ -144,11 +160,12 @@
         }
 
         .hud-item {
-            background: rgba(0, 0, 0, 0.8);
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
-            font-size: 1rem;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 0.6rem 1.2rem;
+            border-radius: 12px;
+            font-size: 1.1rem;
             font-weight: bold;
+            backdrop-filter: blur(10px);
         }
 
         .player-scores {
@@ -159,44 +176,48 @@
         }
 
         .player-score {
-            background: rgba(0, 0, 0, 0.8);
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 0.6rem 1.2rem;
+            border-radius: 12px;
             font-size: 1rem;
             font-weight: bold;
-            border: 2px solid;
+            border: 3px solid;
+            backdrop-filter: blur(10px);
         }
 
         .player-score.p1 {
-            border-color: #ff0000;
+            border-color: #ff4444;
         }
 
         .player-score.p2 {
-            border-color: #00ff00;
+            border-color: #44ff44;
         }
 
+        /* QUESTION DISPLAY - NO HINTS, JUST THE QUESTION */
         .question-display {
-            background: rgba(102, 126, 234, 0.95);
-            padding: 1rem 2rem;
-            border-radius: 12px;
-            font-size: 2rem;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.95), rgba(118, 75, 162, 0.95));
+            padding: 1.2rem 2.5rem;
+            border-radius: 16px;
+            font-size: 2.5rem;
             text-align: center;
             margin: 1rem auto;
             max-width: 90%;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
             font-weight: bold;
+            backdrop-filter: blur(10px);
         }
 
-        .streak-display {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            animation: pulse 1s infinite;
+        .streak-glow {
+            animation: streakPulse 1.5s infinite;
+            box-shadow: 0 0 30px rgba(255, 215, 0, 0.8);
         }
 
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
+        @keyframes streakPulse {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 20px rgba(255, 215, 0, 0.6); }
+            50% { transform: scale(1.05); box-shadow: 0 0 40px rgba(255, 215, 0, 1); }
         }
 
+        /* FEEDBACK - PLAYER-SPECIFIC */
         .feedback {
             position: fixed;
             top: 50%;
@@ -206,79 +227,104 @@
             font-weight: bold;
             z-index: 500;
             pointer-events: none;
-            animation: feedbackPop 0.6s ease-out;
-            text-shadow: 0 0 20px rgba(0, 0, 0, 0.9), 0 0 40px rgba(0, 0, 0, 0.7);
+            animation: feedbackPop 0.8s ease-out;
+            text-shadow:
+                0 0 10px rgba(0, 0, 0, 1),
+                0 0 20px rgba(0, 0, 0, 0.8),
+                0 0 40px rgba(0, 0, 0, 0.6);
         }
 
         @keyframes feedbackPop {
             0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
-            50% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+            40% { transform: translate(-50%, -50%) scale(1.3); opacity: 1; }
             100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
         }
 
-        .leaderboard {
+        /* RANKING SCREEN */
+        .ranking {
             background: rgba(0, 0, 0, 0.95);
             padding: 2rem;
-            border-radius: 16px;
+            border-radius: 20px;
             max-width: 90%;
             max-height: 70vh;
             overflow-y: auto;
+            backdrop-filter: blur(15px);
         }
 
-        .leaderboard-entry {
+        .ranking-entry {
             display: flex;
             justify-content: space-between;
-            padding: 0.8rem;
-            margin-bottom: 0.5rem;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
+            align-items: center;
+            padding: 1rem;
+            margin-bottom: 0.8rem;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            transition: transform 0.2s;
         }
 
-        .leaderboard-entry:first-child {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        .ranking-entry:hover {
+            transform: scale(1.02);
+        }
+
+        .ranking-entry.rank-1 {
+            background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+            color: #000;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        .ranking-entry.rank-2 {
+            background: linear-gradient(135deg, #C0C0C0 0%, #808080 100%);
+            color: #000;
+        }
+
+        .ranking-entry.rank-3 {
+            background: linear-gradient(135deg, #CD7F32 0%, #8B4513 100%);
+            color: #fff;
+        }
+
+        .ranking-entry.current {
+            border: 3px solid #667eea;
+            box-shadow: 0 0 20px rgba(102, 126, 234, 0.6);
         }
 
         @media (max-width: 480px) {
-            .overlay h1 { font-size: 1.8rem; }
-            .question-display { font-size: 1.5rem; padding: 0.8rem 1.5rem; }
-            .feedback { font-size: 2.5rem; }
-            .hud-item { font-size: 0.9rem; padding: 0.4rem 0.8rem; }
+            .overlay h1 { font-size: 2rem; }
+            .question-display { font-size: 2rem; padding: 1rem 2rem; }
+            .feedback { font-size: 3rem; }
+            .hud-item { font-size: 0.95rem; padding: 0.5rem 1rem; }
         }
     </style>
 </head>
 <body>
-    <!-- Hidden video element for MediaPipe (NEVER DISPLAYED) -->
+    <!-- HIDDEN VIDEO - NEVER DISPLAYED -->
     <video id="hiddenVideo" playsinline autoplay muted></video>
 
-    <!-- Three.js canvas -->
+    <!-- Three.js Canvas -->
     <canvas id="gameCanvas"></canvas>
 
-    <!-- HUD -->
+    <!-- MINIMAL HUD -->
     <div id="hud" class="hidden">
         <div class="hud-row">
-            <div class="hud-item">Mode: <span id="modeDisplay">Solo</span></div>
-            <div class="hud-item">Time: <span id="timeDisplay">60</span>s</div>
+            <div class="hud-item">📊 <span id="questionCount">0</span>/10</div>
+            <div class="hud-item">⏱️ <span id="timeDisplay">60</span>s</div>
         </div>
-        <div class="hud-row player-scores" id="playerScores">
-            <div class="player-score p1">
-                P1: <span id="p1Score">0</span> | Streak: <span id="p1Streak">0</span>
-            </div>
-        </div>
+        <div class="hud-row player-scores" id="playerScores"></div>
         <div class="question-display" id="questionDisplay">?</div>
     </div>
 
     <!-- Start Overlay -->
     <div id="startOverlay" class="overlay">
-        <h1>🎯 Math Shooting Game</h1>
+        <h1>🎯 Math Shooting!</h1>
         <p>
-            Use hand gestures to shoot the correct answers!<br>
-            Make a pistol: point with index finger, thumb up.<br>
-            <strong>Camera access needed (never shown or saved)</strong>
+            Shoot numbers with hand gestures!<br>
+            Make a pistol: 👉 point finger, thumb up.<br>
+            <small>Camera needed (never shown)</small>
         </p>
         <div class="btn-group">
-            <button class="btn" onclick="startGame('solo')">Solo Mode</button>
-            <button class="btn" onclick="startGame('duo')">2-Player</button>
-            <button class="btn" onclick="startGame('party')">Party Mode</button>
+            <button class="btn" onclick="startGame('solo')">🎮 Solo</button>
+            <button class="btn" onclick="startGame('duo')">👥 2-Player</button>
+            <button class="btn" onclick="startGame('party')">🎉 Party</button>
         </div>
     </div>
 
@@ -286,33 +332,34 @@
     <div id="loadingOverlay" class="overlay hidden">
         <div class="spinner"></div>
         <h1>Loading...</h1>
-        <p>Initializing hand tracking model<br>This may take a few seconds</p>
+        <p id="loadingText">Initializing hand tracking</p>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
     </div>
 
     <!-- Error Overlay -->
     <div id="errorOverlay" class="overlay hidden">
-        <h1>⚠️ Error</h1>
+        <h1>⚠️ Oops!</h1>
         <p id="errorMessage">Something went wrong</p>
-        <button class="btn" onclick="retryGame()">Retry</button>
+        <button class="btn" onclick="retryGame()">🔄 Retry</button>
     </div>
 
-    <!-- Results Overlay -->
-    <div id="resultsOverlay" class="overlay hidden">
-        <h1>🎉 Round Complete!</h1>
-        <div class="leaderboard" id="leaderboardDisplay"></div>
+    <!-- Ranking Overlay -->
+    <div id="rankingOverlay" class="overlay hidden">
+        <h1>🏆 Results!</h1>
+        <div class="ranking" id="rankingDisplay"></div>
         <div class="btn-group">
-            <button class="btn" onclick="nextRound()">Next Round</button>
-            <button class="btn" onclick="backToMenu()">Main Menu</button>
+            <button class="btn" onclick="nextRound()">▶️ Next Round</button>
+            <button class="btn" onclick="backToMenu()">🏠 Menu</button>
         </div>
     </div>
 
     <!-- Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
-    <!-- MediaPipe Hands - PINNED VERSION 0.4.1646424915 (CRITICAL FOR STABILITY) -->
+    <!-- MediaPipe Hands - PINNED VERSION 0.4.1646424915 (CRITICAL) -->
     <script src="https://unpkg.com/@mediapipe/hands@0.4.1646424915/hands.js" crossorigin="anonymous"></script>
-    <script src="https://unpkg.com/@mediapipe/camera_utils@0.3.1640029074/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://unpkg.com/@mediapipe/drawing_utils@0.3.1620248257/drawing_utils.js" crossorigin="anonymous"></script>
 
     <script>
         'use strict';
@@ -330,25 +377,25 @@
             hands: null,
             videoElement: null,
             handsData: [],
-            lastLandmarks: null,
 
             // Audio
             audioContext: null,
+            audioBuffers: {},
 
             // Game mode
-            gameMode: 'solo', // 'solo', 'duo', 'party'
+            gameMode: 'solo',
 
-            // Player data
+            // Players
             players: [
-                { name: 'Player 1', score: 0, streak: 0, accuracy: 0, shots: 0, hits: 0 },
-                { name: 'Player 2', score: 0, streak: 0, accuracy: 0, shots: 0, hits: 0 }
+                { name: 'P1', score: 0, streak: 0, accuracy: 0, shots: 0, hits: 0, bestStreak: 0 },
+                { name: 'P2', score: 0, streak: 0, accuracy: 0, shots: 0, hits: 0, bestStreak: 0 }
             ],
-            currentPlayerIndex: 0,
 
             // Game state
             timeLeft: 60,
             questionIndex: 0,
             currentQuestion: null,
+            difficultyLevel: 1, // Adaptive difficulty
 
             // Object pools
             targetPool: [],
@@ -357,10 +404,10 @@
             particles: [],
             lasers: [null, null],
 
-            // Hand tracking with stable IDs
+            // Hand tracking (max 2 hands)
             handStates: [
-                { state: 'idle', handedness: null, lastPos: null, cooldownEnd: 0 },
-                { state: 'idle', handedness: null, lastPos: null, cooldownEnd: 0 }
+                { state: 'idle', handedness: null, lastPos: null, cooldownEnd: 0, landmarkIndex: null },
+                { state: 'idle', handedness: null, lastPos: null, cooldownEnd: 0, landmarkIndex: null }
             ],
 
             // Timing
@@ -372,7 +419,11 @@
             // Flags
             isRunning: false,
             isPaused: false,
-            modelReady: false
+            modelReady: false,
+            audioReady: false,
+
+            // Best scores (localStorage)
+            bestScores: []
         };
 
         // ============================================
@@ -381,73 +432,86 @@
         const CONFIG = {
             // Gesture FSM with hysteresis
             GESTURE: {
-                ARM_THRESHOLD: 0.08,        // Distance to arm
-                FIRE_THRESHOLD: 0.15,       // Distance to fire
-                HYSTERESIS: 0.02,           // Prevent jitter
-                V_MIN_THUMB: 0.015,         // Minimum thumb speed
-                COOLDOWN_MS: 250            // Cooldown per hand
+                ARM_THRESHOLD: 0.08,
+                FIRE_THRESHOLD: 0.15,
+                HYSTERESIS: 0.02,
+                V_MIN_THUMB: 0.015,
+                COOLDOWN_MS: 250
             },
 
             // Performance
             MAX_TARGETS: 8,
-            MAX_PARTICLES: 100,
             TARGET_POOL_SIZE: 20,
             PARTICLE_POOL_SIZE: 200,
 
             // Game
             QUESTIONS_PER_ROUND: 10,
-            TIME_LIMIT: 60
+            TIME_LIMIT: 60,
+
+            // Scoring
+            SCORE_CORRECT: 100,
+            SCORE_SMART: 50,
+            PENALTY_WRONG: 20,
+
+            // Adaptive difficulty
+            DIFFICULTY_LEVELS: {
+                1: { range: [0, 10], distractorCount: 3 },
+                2: { range: [0, 15], distractorCount: 4 },
+                3: { range: [0, 20], distractorCount: 5 },
+                4: { range: [0, 20], distractorCount: 6 }
+            }
         };
 
         // ============================================
-        // MATH QUESTION GENERATOR
+        // MATH QUESTION GENERATOR (NO TEXT HINTS)
         // ============================================
         const QUESTION_TEMPLATES = [
-            // ===== ADDITION: Make-10 Strategy =====
+            // ===== ADDITION: Make-10 (0-20) =====
             {
                 type: 'addition_make10',
+                difficulty: 1,
                 generate: () => {
                     const a = 7 + Math.floor(Math.random() * 3); // 7-9
-                    const b = (10 - a) + Math.floor(Math.random() * 6) + 1; // complete to 10 + extra
-                    const intermediate = 10;
+                    const toTen = 10 - a;
+                    const extra = 1 + Math.floor(Math.random() * Math.min(5, 20 - 10));
+                    const b = toTen + extra;
                     const answer = a + b;
-                    const strategy = [intermediate, answer];
+                    const strategy = [10]; // Intermediate: 10
 
                     return {
                         question: `${a} + ${b}`,
                         answer,
-                        strategy,
-                        hint: `Make 10: ${a} + ${10-a} = 10, then 10 + ${b-(10-a)} = ${answer}`
+                        strategy
                     };
                 }
             },
 
-            // ===== SUBTRACTION: Count-up Strategy =====
+            // ===== SUBTRACTION: Count-up (0-20) =====
             {
                 type: 'subtraction_countup',
+                difficulty: 2,
                 generate: () => {
-                    const answer = 3 + Math.floor(Math.random() * 8); // 3-10
-                    const a = 12 + Math.floor(Math.random() * 15); // 12-26
+                    const answer = 3 + Math.floor(Math.random() * 8);
+                    const a = 10 + Math.floor(Math.random() * 10);
                     const b = a - answer;
-                    const strategy = [answer]; // The gap is the answer
+                    const strategy = [answer]; // The gap
 
                     return {
-                        question: `${a} - ${b}`,
+                        question: `${a} − ${b}`,
                         answer,
-                        strategy,
-                        hint: `Count up: ${b} + ? = ${a}`
+                        strategy
                     };
                 }
             },
 
-            // ===== MULTIPLICATION: Decomposition =====
+            // ===== MULTIPLICATION: Decomposition (1-9) =====
             {
                 type: 'multiplication_decompose',
+                difficulty: 3,
                 generate: () => {
-                    const a = 6 + Math.floor(Math.random() * 3); // 6-8
+                    const a = 5 + Math.floor(Math.random() * 4); // 5-8
                     const b = 3 + Math.floor(Math.random() * 4); // 3-6
 
-                    // Decompose b into 2 + remainder
                     const part1 = 2;
                     const part2 = b - part1;
 
@@ -455,161 +519,147 @@
                     const step2 = a * part2;
                     const answer = a * b;
 
-                    const strategy = [step1, step2, answer];
+                    const strategy = [step1, step2];
 
                     return {
                         question: `${a} × ${b}`,
                         answer,
-                        strategy,
-                        hint: `${a} × ${b} = (${a} × ${part1}) + (${a} × ${part2}) = ${step1} + ${step2}`
+                        strategy
                     };
                 }
             },
 
-            // ===== MULTIPLICATION: 9× Shortcut =====
+            // ===== MULTIPLICATION: 9× shortcut =====
             {
                 type: 'multiplication_9x',
+                difficulty: 3,
                 generate: () => {
-                    const b = 3 + Math.floor(Math.random() * 6); // 3-8
-                    const a = 9;
+                    const b = 3 + Math.floor(Math.random() * 6);
+                    const step1 = 10 * b;
+                    const step2 = b;
+                    const answer = 9 * b;
 
-                    const step1 = 10 * b; // 10× is easier
-                    const step2 = b;       // Subtract b
-                    const answer = a * b;
-
-                    const strategy = [step1, step2, answer];
+                    const strategy = [step1, step2];
 
                     return {
                         question: `9 × ${b}`,
                         answer,
-                        strategy,
-                        hint: `9 × ${b} = (10 × ${b}) - ${b} = ${step1} - ${step2}`
+                        strategy
                     };
                 }
             },
 
-            // ===== DIVISION: Inverse Multiplication =====
+            // ===== INVERSE MULTIPLICATION (NO ÷ symbol) =====
             {
-                type: 'division_inverse',
+                type: 'inverse_multiplication',
+                difficulty: 4,
                 generate: () => {
-                    const divisor = 3 + Math.floor(Math.random() * 5); // 3-7
-                    const answer = 3 + Math.floor(Math.random() * 6);  // 3-8
-                    const a = divisor * answer;
+                    const a = 3 + Math.floor(Math.random() * 5); // 3-7
+                    const answer = 2 + Math.floor(Math.random() * 6); // 2-7
+                    const b = a * answer;
 
                     const strategy = [answer];
 
                     return {
-                        question: `${a} ÷ ${divisor}`,
+                        question: `${a} × ? = ${b}`,
                         answer,
-                        strategy,
-                        hint: `Think: ${divisor} × ? = ${a}`
+                        strategy
                     };
                 }
             }
         ];
 
         function generateQuestion() {
-            const template = QUESTION_TEMPLATES[Math.floor(Math.random() * QUESTION_TEMPLATES.length)];
+            // Filter by difficulty
+            const available = QUESTION_TEMPLATES.filter(t => t.difficulty <= STATE.difficultyLevel);
+            const template = available[Math.floor(Math.random() * available.length)];
             const q = template.generate();
 
-            // Generate distractors (wrong answers)
+            // Generate distractors based on difficulty
+            const diffConfig = CONFIG.DIFFICULTY_LEVELS[STATE.difficultyLevel];
             const distractors = new Set();
-            distractors.add(q.answer + 1);
-            distractors.add(q.answer - 1);
-            distractors.add(q.answer + Math.floor(Math.random() * 5) + 2);
-            distractors.add(Math.max(1, q.answer - Math.floor(Math.random() * 5) - 2));
 
-            // Add more distractors
-            while (distractors.size < 6) {
-                const offset = Math.floor(Math.random() * 20) - 10;
-                const distractor = Math.max(1, q.answer + offset);
-                if (distractor !== q.answer) {
+            while (distractors.size < diffConfig.distractorCount) {
+                const offset = Math.floor(Math.random() * 10) - 5;
+                const distractor = Math.max(0, Math.min(diffConfig.range[1], q.answer + offset));
+                if (distractor !== q.answer && !q.strategy.includes(distractor)) {
                     distractors.add(distractor);
                 }
             }
 
-            // Remove answer from distractors
-            distractors.delete(q.answer);
+            const allNumbers = [q.answer, ...q.strategy, ...Array.from(distractors)];
+            const uniqueNumbers = [...new Set(allNumbers)].slice(0, CONFIG.MAX_TARGETS);
 
-            // Combine strategy intermediates + distractors
-            const allNumbers = [q.answer, ...q.strategy.filter(s => s !== q.answer), ...Array.from(distractors)];
-            const uniqueNumbers = [...new Set(allNumbers)].filter(n => n > 0);
-
-            // Limit to MAX_TARGETS
-            const finalNumbers = uniqueNumbers.slice(0, CONFIG.MAX_TARGETS);
-
-            // Ensure answer is always included
-            if (!finalNumbers.includes(q.answer)) {
-                finalNumbers[finalNumbers.length - 1] = q.answer;
+            if (!uniqueNumbers.includes(q.answer)) {
+                uniqueNumbers[uniqueNumbers.length - 1] = q.answer;
             }
 
             return {
                 ...q,
-                allNumbers: finalNumbers
+                allNumbers: uniqueNumbers
             };
         }
 
         // ============================================
-        // AUDIO SYSTEM (iOS-SAFE)
+        // AUDIO SYSTEM (PRELOADED, iOS-SAFE)
         // ============================================
-        function initAudio() {
+        async function initAudio() {
             try {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 STATE.audioContext = new AudioContext();
 
-                // Resume after user interaction (iOS requirement)
                 if (STATE.audioContext.state === 'suspended') {
-                    STATE.audioContext.resume();
+                    await STATE.audioContext.resume();
                 }
+
+                // Preload sounds
+                await Promise.all([
+                    createSound('shoot', [[200, 0.08, 'square']]),
+                    createSound('correct', [[523, 0.15], [659, 0.15, 'sine', 80]]),
+                    createSound('smart', [[659, 0.12], [784, 0.12, 'sine', 60], [880, 0.15, 'sine', 120]]),
+                    createSound('wrong', [[180, 0.25]]),
+                    createSound('miss', [[140, 0.12]])
+                ]);
+
+                STATE.audioReady = true;
             } catch (e) {
                 console.warn('Web Audio not supported:', e);
             }
         }
 
-        function playTone(frequency, duration, type = 'sine') {
-            if (!STATE.audioContext) return;
-
-            try {
-                const osc = STATE.audioContext.createOscillator();
-                const gain = STATE.audioContext.createGain();
-
-                osc.connect(gain);
-                gain.connect(STATE.audioContext.destination);
-
-                osc.frequency.value = frequency;
-                osc.type = type;
-
-                const now = STATE.audioContext.currentTime;
-                gain.gain.setValueAtTime(0.2, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
-
-                osc.start(now);
-                osc.stop(now + duration);
-            } catch (e) {
-                console.warn('Audio playback failed:', e);
-            }
+        async function createSound(name, tones) {
+            // For now, we'll use simple oscillators (can be replaced with loaded buffers)
+            STATE.audioBuffers[name] = tones;
         }
 
         function playSFX(type) {
-            switch (type) {
-                case 'shoot':
-                    playTone(200, 0.08, 'square');
-                    break;
-                case 'correct':
-                    playTone(523, 0.15);
-                    setTimeout(() => playTone(659, 0.15), 80);
-                    break;
-                case 'smart':
-                    playTone(659, 0.12);
-                    setTimeout(() => playTone(784, 0.12), 60);
-                    setTimeout(() => playTone(880, 0.15), 120);
-                    break;
-                case 'wrong':
-                    playTone(180, 0.25);
-                    break;
-                case 'miss':
-                    playTone(140, 0.12);
-                    break;
+            if (!STATE.audioContext || !STATE.audioReady) return;
+
+            try {
+                const tones = STATE.audioBuffers[type];
+                if (!tones) return;
+
+                tones.forEach(([freq, duration, oscType = 'sine', delay = 0]) => {
+                    setTimeout(() => {
+                        const osc = STATE.audioContext.createOscillator();
+                        const gain = STATE.audioContext.createGain();
+
+                        osc.connect(gain);
+                        gain.connect(STATE.audioContext.destination);
+
+                        osc.frequency.value = freq;
+                        osc.type = oscType;
+
+                        const now = STATE.audioContext.currentTime;
+                        gain.gain.setValueAtTime(0.15, now);
+                        gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+
+                        osc.start(now);
+                        osc.stop(now + duration);
+                    }, delay);
+                });
+            } catch (e) {
+                console.warn('Audio playback failed:', e);
             }
         }
 
@@ -619,12 +669,10 @@
         function initThreeJS() {
             const canvas = document.getElementById('gameCanvas');
 
-            // Scene
             STATE.scene = new THREE.Scene();
-            STATE.scene.background = new THREE.Color(0x0f0f1e);
-            STATE.scene.fog = new THREE.Fog(0x0f0f1e, 15, 50);
+            STATE.scene.background = new THREE.Color(0x0a0a1a);
+            STATE.scene.fog = new THREE.Fog(0x0a0a1a, 15, 50);
 
-            // Camera
             STATE.camera = new THREE.PerspectiveCamera(
                 75,
                 window.innerWidth / window.innerHeight,
@@ -634,16 +682,14 @@
             STATE.camera.position.set(0, 2, 15);
             STATE.camera.lookAt(0, 0, 0);
 
-            // Renderer
             STATE.renderer = new THREE.WebGLRenderer({
                 canvas,
                 antialias: true,
                 powerPreference: 'high-performance'
             });
             STATE.renderer.setSize(window.innerWidth, window.innerHeight);
-            STATE.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Performance limit
+            STATE.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-            // Lighting
             const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
             STATE.scene.add(ambientLight);
 
@@ -655,12 +701,10 @@
             pointLight2.position.set(-10, 5, -10);
             STATE.scene.add(pointLight2);
 
-            // Grid floor
-            const gridHelper = new THREE.GridHelper(60, 60, 0x667eea, 0x333344);
+            const gridHelper = new THREE.GridHelper(60, 60, 0x667eea, 0x222233);
             gridHelper.position.y = -6;
             STATE.scene.add(gridHelper);
 
-            // Initialize object pools
             initObjectPools();
 
             window.addEventListener('resize', onWindowResize);
@@ -676,7 +720,6 @@
         // OBJECT POOLING
         // ============================================
         function initObjectPools() {
-            // Pre-create target pool
             for (let i = 0; i < CONFIG.TARGET_POOL_SIZE; i++) {
                 const target = createTargetMesh();
                 target.visible = false;
@@ -684,7 +727,6 @@
                 STATE.targetPool.push(target);
             }
 
-            // Pre-create particle pool
             for (let i = 0; i < CONFIG.PARTICLE_POOL_SIZE; i++) {
                 const particle = createParticleMesh();
                 particle.visible = false;
@@ -702,10 +744,7 @@
             });
             const mesh = new THREE.Mesh(geometry, material);
 
-            // Add text sprite container
-            const sprite = new THREE.Sprite(
-                new THREE.SpriteMaterial({ map: null })
-            );
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: null }));
             sprite.scale.set(1.5, 1.5, 1);
             mesh.add(sprite);
             mesh.userData.sprite = sprite;
@@ -738,21 +777,21 @@
         }
 
         // ============================================
-        // TARGET MANAGEMENT
+        // TARGET MANAGEMENT (VISUAL HINTS)
         // ============================================
         function createTarget(number, isAnswer, isStrategy) {
             const target = getTargetFromPool();
 
-            // Set color
-            let color = 0x888888; // default gray
-            if (isAnswer) color = 0x4CAF50; // green for correct
-            else if (isStrategy) color = 0xFFD700; // gold for strategy
+            // Color coding
+            let color = 0x888888;
+            if (isAnswer) color = 0x4CAF50;
+            else if (isStrategy) color = 0xFFD700; // Gold for strategy
 
             target.material.color.setHex(color);
             target.material.emissive.setHex(color);
-            target.material.emissiveIntensity = isAnswer ? 0.5 : 0.3;
+            target.material.emissiveIntensity = isAnswer ? 0.6 : isStrategy ? 0.5 : 0.3;
 
-            // Random position in 3D space
+            // Position
             const angle = Math.random() * Math.PI * 2;
             const radius = 8 + Math.random() * 4;
             const height = -2 + Math.random() * 8;
@@ -763,7 +802,7 @@
                 Math.sin(angle) * radius - 10
             );
 
-            // Update text sprite
+            // Text sprite
             const canvas = document.createElement('canvas');
             canvas.width = 256;
             canvas.height = 256;
@@ -778,7 +817,6 @@
             target.userData.sprite.material.map = texture;
             target.userData.sprite.material.needsUpdate = true;
 
-            // Movement data
             target.userData = {
                 number,
                 isAnswer,
@@ -788,7 +826,8 @@
                     (Math.random() - 0.5) * 0.02,
                     (Math.random() - 0.5) * 0.01
                 ),
-                sprite: target.userData.sprite
+                sprite: target.userData.sprite,
+                pulsePhase: Math.random() * Math.PI * 2 // For pulsing animation
             };
 
             target.visible = true;
@@ -798,7 +837,6 @@
         }
 
         function spawnTargets() {
-            // Clear old targets
             STATE.targets.forEach(t => releaseTarget(t));
             STATE.targets = [];
 
@@ -814,27 +852,27 @@
         }
 
         function updateTargets(deltaTime) {
-            STATE.targets.forEach(target => {
-                // Move
-                target.position.add(target.userData.velocity);
+            const time = Date.now() * 0.001;
 
-                // Rotate
+            STATE.targets.forEach(target => {
+                target.position.add(target.userData.velocity);
                 target.rotation.y += 0.02;
                 target.rotation.x += 0.01;
 
-                // Bounce off boundaries
-                if (Math.abs(target.position.x) > 14) {
-                    target.userData.velocity.x *= -1;
-                }
-                if (target.position.y > 8 || target.position.y < -5) {
-                    target.userData.velocity.y *= -1;
-                }
-                if (target.position.z > 5 || target.position.z < -20) {
-                    target.userData.velocity.z *= -1;
+                // Bounce
+                if (Math.abs(target.position.x) > 14) target.userData.velocity.x *= -1;
+                if (target.position.y > 8 || target.position.y < -5) target.userData.velocity.y *= -1;
+                if (target.position.z > 5 || target.position.z < -20) target.userData.velocity.z *= -1;
+
+                // VISUAL HINT: Strategy targets pulse gently
+                if (target.userData.isStrategy) {
+                    const pulse = Math.sin(time * 2 + target.userData.pulsePhase) * 0.2 + 0.8;
+                    target.material.emissiveIntensity = 0.5 * pulse;
+                    target.scale.setScalar(0.95 + 0.1 * pulse);
                 }
 
                 // Gentle floating
-                target.position.y += Math.sin(Date.now() * 0.002 + target.position.x) * 0.008;
+                target.position.y += Math.sin(time * 2 + target.position.x) * 0.008;
             });
         }
 
@@ -843,9 +881,10 @@
         // ============================================
         async function initMediaPipe() {
             try {
+                updateLoadingProgress(20, 'Requesting camera...');
+
                 STATE.videoElement = document.getElementById('hiddenVideo');
 
-                // Request camera (NEVER SHOWN)
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: 'user',
@@ -857,7 +896,8 @@
                 STATE.videoElement.srcObject = stream;
                 await STATE.videoElement.play();
 
-                // Initialize MediaPipe Hands with PINNED VERSION
+                updateLoadingProgress(50, 'Loading hand model...');
+
                 STATE.hands = new Hands({
                     locateFile: (file) => {
                         return `https://unpkg.com/@mediapipe/hands@0.4.1646424915/${file}`;
@@ -865,7 +905,7 @@
                 });
 
                 STATE.hands.setOptions({
-                    maxNumHands: 2, // Support 2 hands for duo mode
+                    maxNumHands: 2,
                     modelComplexity: 1,
                     minDetectionConfidence: 0.7,
                     minTrackingConfidence: 0.6
@@ -873,8 +913,11 @@
 
                 STATE.hands.onResults(onHandsResults);
 
-                // Wait for model to fully load
+                updateLoadingProgress(80, 'Initializing model...');
+
                 await new Promise(resolve => setTimeout(resolve, 1500));
+
+                updateLoadingProgress(100, 'Ready!');
 
                 STATE.modelReady = true;
 
@@ -883,14 +926,20 @@
             }
         }
 
+        function updateLoadingProgress(percent, text) {
+            document.getElementById('progressFill').style.width = `${percent}%`;
+            document.getElementById('loadingText').textContent = text;
+        }
+
         function onHandsResults(results) {
             STATE.handsData = results.multiHandLandmarks || [];
-            STATE.lastLandmarks = results;
 
-            // Assign stable hand IDs based on handedness
+            // Assign stable hand IDs
             if (results.multiHandedness) {
+                STATE.handStates.forEach(hs => hs.landmarkIndex = null);
+
                 results.multiHandedness.forEach((handedness, idx) => {
-                    const label = handedness.label; // "Left" or "Right"
+                    const label = handedness.label;
                     const handIndex = label === 'Left' ? 0 : 1;
                     if (STATE.handStates[handIndex]) {
                         STATE.handStates[handIndex].handedness = label;
@@ -901,12 +950,11 @@
         }
 
         // ============================================
-        // HAND GESTURE FSM WITH HYSTERESIS
+        // HAND GESTURE FSM
         // ============================================
         function updateHandGestures(deltaTime) {
             const now = Date.now();
 
-            // Clear lasers if no hands
             if (!STATE.handsData || STATE.handsData.length === 0) {
                 STATE.handStates.forEach((hs, i) => {
                     hs.state = 'idle';
@@ -918,9 +966,7 @@
                 return;
             }
 
-            // Update each hand
             STATE.handStates.forEach((handState, handIndex) => {
-                // Find landmarks for this hand
                 const landmarkIndex = handState.landmarkIndex;
                 if (landmarkIndex === undefined || !STATE.handsData[landmarkIndex]) {
                     handState.state = 'idle';
@@ -933,20 +979,16 @@
 
                 const landmarks = STATE.handsData[landmarkIndex];
 
-                // Extract key points
                 const indexTip = landmarks[8];
                 const thumbTip = landmarks[4];
                 const wrist = landmarks[0];
-                const indexMCP = landmarks[5];
 
-                // Calculate thumb-index distance
                 const distance = Math.sqrt(
                     Math.pow(thumbTip.x - indexTip.x, 2) +
                     Math.pow(thumbTip.y - indexTip.y, 2) +
                     Math.pow(thumbTip.z - indexTip.z, 2)
                 );
 
-                // Calculate thumb velocity
                 const thumbSpeed = handState.lastPos ?
                     Math.sqrt(
                         Math.pow(thumbTip.x - handState.lastPos.x, 2) +
@@ -955,24 +997,20 @@
 
                 handState.lastPos = { x: thumbTip.x, y: thumbTip.y, z: thumbTip.z };
 
-                // Calculate aim direction (wrist -> index tip)
                 const aimDir = new THREE.Vector3(
                     indexTip.x - wrist.x,
                     -(indexTip.y - wrist.y),
                     indexTip.z - wrist.z
                 ).normalize();
 
-                // Convert to world coordinates
                 const worldX = (indexTip.x - 0.5) * 35;
                 const worldY = -(indexTip.y - 0.5) * 25;
                 const worldZ = -8;
 
                 const startPos = new THREE.Vector3(worldX, worldY, worldZ);
 
-                // Update laser
                 updateLaser(handIndex, startPos, aimDir);
 
-                // FSM with hysteresis
                 const { ARM_THRESHOLD, FIRE_THRESHOLD, HYSTERESIS, V_MIN_THUMB, COOLDOWN_MS } = CONFIG.GESTURE;
 
                 switch (handState.state) {
@@ -1015,12 +1053,10 @@
         }
 
         function updateLaser(handIndex, startPos, direction) {
-            // Remove old laser
             if (STATE.lasers[handIndex]) {
                 STATE.scene.remove(STATE.lasers[handIndex]);
             }
 
-            // Create laser beam
             const geometry = new THREE.BufferGeometry();
             const endPos = startPos.clone().add(direction.clone().multiplyScalar(60));
 
@@ -1034,9 +1070,8 @@
             const color = handIndex === 0 ? 0xff3333 : 0x33ff33;
             const material = new THREE.LineBasicMaterial({
                 color,
-                opacity: 0.7,
-                transparent: true,
-                linewidth: 2
+                opacity: 0.8,
+                transparent: true
             });
 
             const laser = new THREE.Line(geometry, material);
@@ -1047,15 +1082,11 @@
         function fireShot(origin, direction, handIndex) {
             playSFX('shoot');
 
-            // Determine player index
-            const playerIndex = STATE.gameMode === 'duo' ? handIndex : STATE.currentPlayerIndex;
-
+            const playerIndex = STATE.gameMode === 'duo' ? handIndex : 0;
             STATE.players[playerIndex].shots++;
 
-            // Create muzzle flash
             createMuzzleFlash(origin);
 
-            // Raycast
             const raycaster = new THREE.Raycaster(origin, direction);
             const intersects = raycaster.intersectObjects(STATE.targets.filter(t => t.visible));
 
@@ -1063,7 +1094,7 @@
                 const hit = intersects[0].object;
                 handleTargetHit(hit, playerIndex);
             } else {
-                showFeedback('MISS', '#888888');
+                showFeedback(`${STATE.players[playerIndex].name} MISS`, '#888888');
                 playSFX('miss');
             }
         }
@@ -1071,40 +1102,54 @@
         function handleTargetHit(target, playerIndex) {
             const { isAnswer, isStrategy, number } = target.userData;
 
-            // Remove target
             releaseTarget(target);
             STATE.targets = STATE.targets.filter(t => t !== target);
 
             STATE.players[playerIndex].hits++;
 
-            // Create explosion
             createExplosion(target.position, isAnswer ? 0x4CAF50 : isStrategy ? 0xFFD700 : 0xff4444);
 
             if (isAnswer) {
-                // Correct answer
-                STATE.players[playerIndex].score += 100;
+                STATE.players[playerIndex].score += CONFIG.SCORE_CORRECT;
                 STATE.players[playerIndex].streak++;
+                STATE.players[playerIndex].bestStreak = Math.max(
+                    STATE.players[playerIndex].bestStreak,
+                    STATE.players[playerIndex].streak
+                );
 
-                showFeedback('CORRECT! +100', '#4CAF50');
+                showFeedback(`${STATE.players[playerIndex].name} CORRECT! +${CONFIG.SCORE_CORRECT}`, '#4CAF50');
                 playSFX('correct');
+
+                // Adaptive difficulty
+                if (STATE.players[playerIndex].streak >= 5 && STATE.difficultyLevel < 4) {
+                    STATE.difficultyLevel++;
+                }
 
                 nextQuestion();
 
             } else if (isStrategy) {
-                // Smart intermediate
-                STATE.players[playerIndex].score += 50;
+                STATE.players[playerIndex].score += CONFIG.SCORE_SMART;
                 STATE.players[playerIndex].streak++;
+                STATE.players[playerIndex].bestStreak = Math.max(
+                    STATE.players[playerIndex].bestStreak,
+                    STATE.players[playerIndex].streak
+                );
 
-                showFeedback('SMART! +50', '#FFD700');
-                playSFX('smart');
+                showFeedback(`${STATE.players[playerIndex].name} SMART! +${CONFIG.SCORE_SMART}`, '#FFD700');
+                playSFX('smart'); // Better sound for smart strategy
 
             } else {
-                // Wrong answer
-                STATE.players[playerIndex].score = Math.max(0, STATE.players[playerIndex].score - 20);
+                STATE.players[playerIndex].score = Math.max(0, STATE.players[playerIndex].score - CONFIG.PENALTY_WRONG);
+                // Gentle streak drop: only decrease by 1
                 STATE.players[playerIndex].streak = Math.max(0, STATE.players[playerIndex].streak - 1);
 
-                showFeedback('WRONG -20', '#ff4444');
+                showFeedback(`${STATE.players[playerIndex].name} WRONG -${CONFIG.PENALTY_WRONG}`, '#ff4444');
                 playSFX('wrong');
+
+                // Reduce difficulty after mistakes
+                if (STATE.players[playerIndex].streak === 0 && STATE.difficultyLevel > 1) {
+                    STATE.difficultyLevel = Math.max(1, STATE.difficultyLevel - 1);
+                }
             }
 
             updateHUD();
@@ -1155,7 +1200,7 @@
         function updateParticles(deltaTime) {
             STATE.particles = STATE.particles.filter(p => {
                 p.position.add(p.userData.velocity);
-                p.userData.velocity.y -= 0.015; // Gravity
+                p.userData.velocity.y -= 0.015;
                 p.userData.life -= deltaTime * 2.5;
 
                 p.material.opacity = p.userData.life / p.userData.maxLife;
@@ -1190,18 +1235,13 @@
             feedback.style.color = color;
             document.body.appendChild(feedback);
 
-            setTimeout(() => feedback.remove(), 600);
+            setTimeout(() => feedback.remove(), 800);
         }
 
         function updateHUD() {
-            // Mode
-            document.getElementById('modeDisplay').textContent =
-                STATE.gameMode === 'solo' ? 'Solo' : STATE.gameMode === 'duo' ? '2-Player' : 'Party';
-
-            // Time
+            document.getElementById('questionCount').textContent = STATE.questionIndex;
             document.getElementById('timeDisplay').textContent = Math.ceil(Math.max(0, STATE.timeLeft));
 
-            // Player scores
             const playerScores = document.getElementById('playerScores');
             playerScores.innerHTML = '';
 
@@ -1213,13 +1253,17 @@
 
                 const div = document.createElement('div');
                 div.className = `player-score p${i + 1}`;
+
+                if (p.streak >= 5) {
+                    div.classList.add('streak-glow');
+                }
+
                 div.innerHTML = `
-                    P${i + 1}: ${p.score} | Streak: ${p.streak} | Acc: ${p.accuracy}%
+                    ${p.name}: ${p.score} | 🔥 ${p.streak} | 🎯 ${p.accuracy}%
                 `;
                 playerScores.appendChild(div);
             }
 
-            // Question
             if (STATE.currentQuestion) {
                 document.getElementById('questionDisplay').textContent = STATE.currentQuestion.question;
             }
@@ -1240,32 +1284,73 @@
 
         function endRound() {
             STATE.isRunning = false;
-
-            showLeaderboard();
+            saveBestScores();
+            showRanking();
         }
 
-        function showLeaderboard() {
-            const leaderboard = document.getElementById('leaderboardDisplay');
-            leaderboard.innerHTML = '';
+        function saveBestScores() {
+            try {
+                const scores = JSON.parse(localStorage.getItem('mathShootingBestScores') || '[]');
 
-            const activePlayers = STATE.gameMode === 'party' ? STATE.players.length :
-                                   STATE.gameMode === 'duo' ? 2 : 1;
+                const activePlayers = STATE.gameMode === 'duo' ? 2 : 1;
 
-            const sorted = STATE.players.slice(0, activePlayers)
-                .map((p, i) => ({ ...p, index: i }))
-                .sort((a, b) => b.score - a.score);
+                for (let i = 0; i < activePlayers; i++) {
+                    const p = STATE.players[i];
+                    scores.push({
+                        name: p.name,
+                        score: p.score,
+                        streak: p.bestStreak,
+                        accuracy: p.accuracy,
+                        date: new Date().toISOString()
+                    });
+                }
 
-            sorted.forEach((p, rank) => {
-                const entry = document.createElement('div');
-                entry.className = 'leaderboard-entry';
-                entry.innerHTML = `
-                    <span>${rank + 1}. ${p.name}</span>
-                    <span>${p.score} pts (${p.accuracy}% acc)</span>
-                `;
-                leaderboard.appendChild(entry);
+                scores.sort((a, b) => b.score - a.score || b.streak - a.streak || b.accuracy - a.accuracy);
+
+                localStorage.setItem('mathShootingBestScores', JSON.stringify(scores.slice(0, 50)));
+
+                STATE.bestScores = scores;
+            } catch (e) {
+                console.warn('localStorage not available:', e);
+            }
+        }
+
+        function showRanking() {
+            const ranking = document.getElementById('rankingDisplay');
+            ranking.innerHTML = '';
+
+            const activePlayers = STATE.gameMode === 'duo' ? 2 : 1;
+
+            const currentPlayers = STATE.players.slice(0, activePlayers)
+                .map((p, i) => ({ ...p, index: i, current: true }))
+                .sort((a, b) => b.score - a.score || b.bestStreak - a.bestStreak || b.accuracy - a.accuracy);
+
+            const allBest = STATE.bestScores.slice(0, 5);
+
+            // Merge current with all-time
+            const display = [...currentPlayers];
+
+            allBest.forEach(best => {
+                if (!display.some(p => p.score === best.score && p.name === best.name)) {
+                    display.push(best);
+                }
             });
 
-            showOverlay('resultsOverlay');
+            display.slice(0, 5).forEach((p, rank) => {
+                const entry = document.createElement('div');
+                entry.className = `ranking-entry rank-${rank + 1}`;
+                if (p.current) entry.classList.add('current');
+
+                const medal = rank === 0 ? '🥇' : rank === 1 ? '🥈' : rank === 2 ? '🥉' : `${rank + 1}.`;
+
+                entry.innerHTML = `
+                    <span>${medal} ${p.name}</span>
+                    <span>${p.score} pts | 🔥 ${p.bestStreak || p.streak} | 🎯 ${p.accuracy}%</span>
+                `;
+                ranking.appendChild(entry);
+            });
+
+            showOverlay('rankingOverlay');
         }
 
         // ============================================
@@ -1277,7 +1362,6 @@
             const deltaTime = (timestamp - STATE.lastRenderTime) / 1000;
             STATE.lastRenderTime = timestamp;
 
-            // Update time
             const elapsed = (timestamp - STATE.gameStartTime) / 1000;
             STATE.timeLeft = Math.max(0, CONFIG.TIME_LIMIT - elapsed);
 
@@ -1286,12 +1370,10 @@
                 return;
             }
 
-            // Update game objects
             updateTargets(deltaTime);
             updateParticles(deltaTime);
             updateHUD();
 
-            // Render
             STATE.renderer.render(STATE.scene, STATE.camera);
 
             requestAnimationFrame(gameLoop);
@@ -1328,10 +1410,10 @@
                 STATE.gameMode = mode;
 
                 showOverlay('loadingOverlay');
+                updateLoadingProgress(0, 'Starting...');
 
-                // Initialize systems
                 if (!STATE.audioContext) {
-                    initAudio();
+                    await initAudio();
                 }
 
                 if (!STATE.scene) {
@@ -1342,33 +1424,34 @@
                     await initMediaPipe();
                 }
 
-                // Reset game state
+                updateLoadingProgress(100, 'Ready!');
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                // Reset
                 STATE.questionIndex = 0;
                 STATE.timeLeft = CONFIG.TIME_LIMIT;
+                STATE.difficultyLevel = 1;
                 STATE.handStates = [
-                    { state: 'idle', handedness: null, lastPos: null, cooldownEnd: 0 },
-                    { state: 'idle', handedness: null, lastPos: null, cooldownEnd: 0 }
+                    { state: 'idle', handedness: null, lastPos: null, cooldownEnd: 0, landmarkIndex: null },
+                    { state: 'idle', handedness: null, lastPos: null, cooldownEnd: 0, landmarkIndex: null }
                 ];
 
-                // Reset players
                 STATE.players.forEach(p => {
                     p.score = 0;
                     p.streak = 0;
+                    p.bestStreak = 0;
                     p.accuracy = 0;
                     p.shots = 0;
                     p.hits = 0;
                 });
 
-                // Start first question
                 STATE.currentQuestion = generateQuestion();
                 spawnTargets();
 
-                // Show HUD
                 document.getElementById('hud').classList.remove('hidden');
                 hideAllOverlays();
                 updateHUD();
 
-                // Start loops
                 STATE.isRunning = true;
                 STATE.isPaused = false;
                 STATE.gameStartTime = performance.now();
@@ -1420,10 +1503,17 @@
         // INITIALIZATION
         // ============================================
         window.addEventListener('load', () => {
-            console.log('✅ Game loaded. Choose mode to begin!');
+            console.log('✅ Math Shooting Game loaded!');
+
+            // Load best scores
+            try {
+                STATE.bestScores = JSON.parse(localStorage.getItem('mathShootingBestScores') || '[]');
+            } catch (e) {
+                STATE.bestScores = [];
+            }
         });
 
-        // Prevent scroll/bounce on mobile
+        // Prevent scroll/bounce
         document.body.addEventListener('touchmove', (e) => {
             e.preventDefault();
         }, { passive: false });
