@@ -1545,24 +1545,29 @@
         // ============================================
         // TARGET MANAGEMENT
         // ============================================
+        // Random balloon colors (no hints!)
+        const BALLOON_COLORS = [
+            0xff6b6b,  // Red
+            0x4ecdc4,  // Teal
+            0xffe66d,  // Yellow
+            0x95e1d3,  // Mint
+            0xf38181,  // Coral
+            0xaa96da,  // Purple
+            0xfcbad3,  // Pink
+            0xa8d8ea,  // Sky blue
+            0xf9f871,  // Lemon
+            0x98ddca   // Seafoam
+        ];
+
         function createTarget(number, isAnswer, isStrategy) {
             const target = getTarget();
             if (!target) return null;
 
-            // Set material based on type
-            if (isAnswer) {
-                target.material.color.setHex(0x4CAF50);
-                target.material.emissive.setHex(0x4CAF50);
-                target.material.emissiveIntensity = 0.5;
-            } else if (isStrategy) {
-                target.material.color.setHex(0xFFD700);
-                target.material.emissive.setHex(0xFFD700);
-                target.material.emissiveIntensity = 0.5;
-            } else {
-                target.material.color.setHex(0x666666);
-                target.material.emissive.setHex(0x333333);
-                target.material.emissiveIntensity = 0.2;
-            }
+            // Random color - NO HINTS about which is correct!
+            const color = BALLOON_COLORS[Math.floor(Math.random() * BALLOON_COLORS.length)];
+            target.material.color.setHex(color);
+            target.material.emissive.setHex(color);
+            target.material.emissiveIntensity = 0.3;
 
             // Position - keep within visible screen area
             const x = (Math.random() - 0.5) * 16;  // -8 to 8 (narrower)
@@ -1633,19 +1638,11 @@
                 else if (target.position.y < -3) target.userData.velocity.y *= -1;
                 if (target.position.z > -6 || target.position.z < -14) target.userData.velocity.z *= -1;
 
-                // Visual effects
-                if (target.userData.isStrategy) {
-                    const pulse = Math.sin(time * 4 + target.userData.pulsePhase) * 0.5 + 0.5;
-                    target.material.emissiveIntensity = 0.4 + pulse * 0.5;
-                    const s = 1 + pulse * 0.15;
-                    target.scale.set(1.0 * s, 1.2 * s, 1.0 * s);
-                } else if (target.userData.isAnswer) {
-                    const glow = Math.sin(time * 2) * 0.15 + 0.5;
-                    target.material.emissiveIntensity = glow;
-                    target.scale.set(1.0, 1.2, 1.0);
-                } else {
-                    target.scale.set(1.0, 1.2, 1.0);
-                }
+                // Visual effects - same for all balloons (no hints!)
+                const pulse = Math.sin(time * 2 + target.userData.pulsePhase) * 0.5 + 0.5;
+                target.material.emissiveIntensity = 0.2 + pulse * 0.2;
+                const s = 1 + pulse * 0.05;  // Subtle size change
+                target.scale.set(1.0 * s, 1.2 * s, 1.0 * s);
             });
         }
 
