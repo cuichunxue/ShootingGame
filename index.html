@@ -1525,38 +1525,66 @@
         function handlePointerShoot(clientX, clientY) {
             if (!STATE.isRunning || STATE.isPaused) return;
 
+            console.log('[Touch] Tap at', clientX, clientY);
+
             // Convert screen position to NDC (-1 to 1)
             const ndcX = (clientX / window.innerWidth) * 2 - 1;
             const ndcY = -(clientY / window.innerHeight) * 2 + 1;
 
-            // Update crosshair position in world space
-            const worldX = ndcX * 15;
-            const worldY = ndcY * 11;
-            const worldZ = -6;
+            // Direct raycast from screen position
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), STATE.camera);
 
-            // Move crosshair to tap position
-            STATE.crosshairCurrentPos.x = worldX;
-            STATE.crosshairCurrentPos.y = worldY;
-            STATE.crosshairCurrentPos.z = worldZ;
-            STATE.crosshairTargetPos.x = worldX;
-            STATE.crosshairTargetPos.y = worldY;
-            STATE.crosshairTargetPos.z = worldZ;
+            // Show crosshair at ray intersection point
+            const rayDir = raycaster.ray.direction.clone();
+            const rayOrigin = raycaster.ray.origin.clone();
+            const targetZ = -10;  // Where balloons are
+            const t = (targetZ - rayOrigin.z) / rayDir.z;
+            const hitPoint = rayOrigin.add(rayDir.multiplyScalar(t));
 
+            // Move and show crosshair
             if (STATE.crosshair) {
-                STATE.crosshair.position.set(worldX, worldY, worldZ);
+                STATE.crosshair.position.set(hitPoint.x, hitPoint.y, targetZ + 2);
                 STATE.crosshair.visible = true;
                 STATE.crosshair.lookAt(STATE.camera.position);
+                setCrosshairColor(0xff0000);  // Red when shooting
             }
 
-            // Fire!
-            fireShot();
+            // Play sound
+            playSFX('shoot');
+            STATE.player.shots++;
+
+            // Check for hits
+            const intersects = raycaster.intersectObjects(STATE.targets.filter(t => t.visible), true);
+
+            console.log('[Touch] Intersects:', intersects.length);
+
+            if (intersects.length > 0) {
+                // Find the balloon (parent of sprite if we hit sprite)
+                let target = intersects[0].object;
+                while (target.parent && !STATE.targets.includes(target)) {
+                    target = target.parent;
+                }
+                if (STATE.targets.includes(target)) {
+                    handleHit(target);
+                } else {
+                    showFeedback('MISS', '#888');
+                    playSFX('miss');
+                }
+            } else {
+                showFeedback('MISS', '#888');
+                playSFX('miss');
+            }
 
             // Hide crosshair after a moment
             setTimeout(() => {
-                if (STATE.crosshair && !STATE.modelReady) {
-                    STATE.crosshair.visible = false;
+                if (STATE.crosshair) {
+                    setCrosshairColor(0x00ff00);  // Back to green
+                    if (!STATE.modelReady) {
+                        STATE.crosshair.visible = false;
+                    }
                 }
-            }, 300);
+            }, 200);
         }
 
         // Touch support
