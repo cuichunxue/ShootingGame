@@ -363,11 +363,17 @@
 
     <div id="hud" class="hidden">
         <div class="hud-row">
-            <div class="hud-item" id="questionCount">1/10</div>
-            <div class="hud-item" id="timeDisplay">60s</div>
+            <div class="hud-item" id="worldDisplay">🌲 森の世界</div>
+            <div class="hud-item" id="stageDisplay">Stage 1</div>
+            <div class="hud-item" id="timeDisplay">90s</div>
+        </div>
+        <div class="hud-row">
+            <div class="hud-item" id="questionCount">1/8</div>
+            <div class="hud-item" id="eventDisplay" style="display:none;">🎯 BONUS!</div>
         </div>
         <div class="hud-row player-scores">
             <div class="player-score" id="playerScore">0 pts</div>
+            <div class="player-score" id="totalScore">Total: 0</div>
         </div>
         <div class="question-display" id="questionDisplay">?</div>
     </div>
@@ -465,25 +471,66 @@
             GESTURE: {
                 EXTEND_THRESHOLD: 0.08,
                 CURL_THRESHOLD: 0.05,
-                COOLDOWN_MS: 350  // Balanced cooldown between shots
+                COOLDOWN_MS: 350
             },
             MAX_TARGETS: 5,
-            TARGET_POOL_SIZE: 8,
-            PARTICLE_POOL_SIZE: 50,  // Increased for enhanced VFX
-            QUESTIONS_PER_ROUND: 10,
-            TIME_LIMIT: 60,
+            TARGET_POOL_SIZE: 10,
+            PARTICLE_POOL_SIZE: 60,
+            QUESTIONS_PER_STAGE: 8,  // Questions per stage
+            TIME_LIMIT: 90,  // More time per stage
             SCORE_CORRECT: 100,
             SCORE_SMART: 50,
             PENALTY_WRONG: 20,
-            CROSSHAIR_LERP: 0.35, // Balanced crosshair movement - smooth but responsive
+            CROSSHAIR_LERP: 0.35,
             DETECTION_FPS: 25
         };
 
         // ============================================
-        // MATH QUESTION GENERATOR
+        // STAGE & EVENT SYSTEM
+        // ============================================
+        const WORLDS = [
+            { name: '🌲 森の世界', color: 0x228B22, stages: 3, unlockScore: 0 },
+            { name: '🌊 海の世界', color: 0x1E90FF, stages: 3, unlockScore: 500 },
+            { name: '🏜️ 砂漠の世界', color: 0xDEB887, stages: 3, unlockScore: 1500 },
+            { name: '🌙 夜空の世界', color: 0x191970, stages: 3, unlockScore: 3000 },
+            { name: '🔥 炎の世界', color: 0xFF4500, stages: 3, unlockScore: 5000 },
+            { name: '⭐ 宇宙の世界', color: 0x4B0082, stages: 4, unlockScore: 8000 },
+            { name: '🏆 チャンピオン', color: 0xFFD700, stages: 5, unlockScore: 12000 }
+        ];
+
+        const EVENTS = {
+            NORMAL: 'normal',
+            BONUS: 'bonus',        // All golden targets, 2x points
+            SPEED: 'speed',        // Fast balloons, 1.5x points
+            BOSS: 'boss',          // Big boss balloon
+            FRENZY: 'frenzy',      // Many small targets
+            GOLDEN: 'golden'       // One golden target worth 500pts
+        };
+
+        // Stage state
+        let currentWorld = 0;
+        let currentStage = 1;
+        let currentEvent = EVENTS.NORMAL;
+        let totalScore = 0;  // Accumulated across all stages
+        let stagesCompleted = 0;
+        let bossHealth = 0;
+        let eventTimer = 0;
+
+        // ============================================
+        // MATH QUESTION GENERATOR (EXPANDED)
         // ============================================
         const QUESTION_TEMPLATES = [
-            // Addition Make-10
+            // === LEVEL 1: Basic Addition ===
+            {
+                type: 'addition_simple',
+                difficulty: 1,
+                hint: '足し算！',
+                generate: () => {
+                    const a = 2 + Math.floor(Math.random() * 8);
+                    const b = 2 + Math.floor(Math.random() * 8);
+                    return { question: `${a} + ${b}`, answer: a + b, strategy: [], hint: '' };
+                }
+            },
             {
                 type: 'addition_make10',
                 difficulty: 1,
@@ -493,10 +540,20 @@
                     const toTen = 10 - a;
                     const extra = 1 + Math.floor(Math.random() * 5);
                     const b = toTen + extra;
-                    return { question: `${a} + ${b}`, answer: a + b, strategy: [10], hint: `${a}+${toTen}=10, +${extra}` };
+                    return { question: `${a} + ${b}`, answer: a + b, strategy: [10], hint: `${a}+${toTen}=10` };
                 }
             },
-            // Subtraction Count-up
+            // === LEVEL 2: Subtraction ===
+            {
+                type: 'subtraction_simple',
+                difficulty: 2,
+                hint: '引き算！',
+                generate: () => {
+                    const answer = 2 + Math.floor(Math.random() * 10);
+                    const a = answer + 3 + Math.floor(Math.random() * 10);
+                    return { question: `${a} − ${a - answer}`, answer, strategy: [], hint: '' };
+                }
+            },
             {
                 type: 'subtraction_countup',
                 difficulty: 2,
@@ -505,43 +562,123 @@
                     const answer = 3 + Math.floor(Math.random() * 8);
                     const a = 10 + Math.floor(Math.random() * 10);
                     const b = a - answer;
-                    return { question: `${a} − ${b}`, answer, strategy: [answer], hint: `${b}から${a}まで` };
+                    return { question: `${a} − ${b}`, answer, strategy: [answer], hint: `${b}→${a}` };
                 }
             },
-            // Multiplication Decompose
+            // === LEVEL 3: Multiplication Basics ===
             {
-                type: 'multiplication_decompose',
+                type: 'multiplication_simple',
                 difficulty: 3,
-                hint: '分解して計算！',
+                hint: '掛け算！',
                 generate: () => {
-                    const a = 5 + Math.floor(Math.random() * 4);
-                    const b = 3 + Math.floor(Math.random() * 4);
-                    const step1 = a * 2;
-                    const step2 = a * (b - 2);
-                    return { question: `${a} × ${b}`, answer: a * b, strategy: [step1, step2], hint: `${a}×2 + ${a}×${b-2}` };
+                    const a = 2 + Math.floor(Math.random() * 5);
+                    const b = 2 + Math.floor(Math.random() * 5);
+                    return { question: `${a} × ${b}`, answer: a * b, strategy: [], hint: '' };
                 }
             },
-            // Multiplication 9x shortcut
+            {
+                type: 'multiplication_5x',
+                difficulty: 3,
+                hint: '5の段！半分にして10倍',
+                generate: () => {
+                    const b = 2 + Math.floor(Math.random() * 8);
+                    return { question: `5 × ${b}`, answer: 5 * b, strategy: [b * 10 / 2], hint: `${b}÷2×10` };
+                }
+            },
             {
                 type: 'multiplication_9x',
                 difficulty: 3,
                 hint: '9の魔法！10倍して引く',
                 generate: () => {
-                    const b = 3 + Math.floor(Math.random() * 6);
-                    const step1 = 10 * b;
-                    return { question: `9 × ${b}`, answer: 9 * b, strategy: [step1], hint: `10×${b}−${b}` };
+                    const b = 2 + Math.floor(Math.random() * 8);
+                    return { question: `9 × ${b}`, answer: 9 * b, strategy: [10 * b], hint: `10×${b}−${b}` };
                 }
             },
-            // Inverse Multiplication
+            // === LEVEL 4: Advanced Multiplication ===
+            {
+                type: 'multiplication_decompose',
+                difficulty: 4,
+                hint: '分解して計算！',
+                generate: () => {
+                    const a = 6 + Math.floor(Math.random() * 4);
+                    const b = 4 + Math.floor(Math.random() * 4);
+                    return { question: `${a} × ${b}`, answer: a * b, strategy: [a * 5], hint: `${a}×5 + ${a}×${b-5}` };
+                }
+            },
             {
                 type: 'inverse_multiplication',
                 difficulty: 4,
                 hint: '？を探そう！',
                 generate: () => {
-                    const a = 3 + Math.floor(Math.random() * 5);
-                    const answer = 2 + Math.floor(Math.random() * 6);
-                    const b = a * answer;
-                    return { question: `${a} × ? = ${b}`, answer, strategy: [answer], hint: `${b}÷${a}` };
+                    const a = 3 + Math.floor(Math.random() * 6);
+                    const answer = 2 + Math.floor(Math.random() * 8);
+                    return { question: `${a} × ? = ${a * answer}`, answer, strategy: [], hint: `${a * answer}÷${a}` };
+                }
+            },
+            // === LEVEL 5: Division ===
+            {
+                type: 'division_simple',
+                difficulty: 5,
+                hint: '割り算！',
+                generate: () => {
+                    const answer = 2 + Math.floor(Math.random() * 9);
+                    const b = 2 + Math.floor(Math.random() * 5);
+                    const a = answer * b;
+                    return { question: `${a} ÷ ${b}`, answer, strategy: [], hint: '' };
+                }
+            },
+            {
+                type: 'division_remainder',
+                difficulty: 5,
+                hint: '余りなし！',
+                generate: () => {
+                    const answer = 3 + Math.floor(Math.random() * 7);
+                    const b = 3 + Math.floor(Math.random() * 4);
+                    return { question: `${answer * b} ÷ ${b}`, answer, strategy: [], hint: `${b}×?=${answer*b}` };
+                }
+            },
+            // === LEVEL 6: Mixed Operations ===
+            {
+                type: 'mixed_add_mult',
+                difficulty: 6,
+                hint: '掛け算を先に！',
+                generate: () => {
+                    const a = 2 + Math.floor(Math.random() * 5);
+                    const b = 2 + Math.floor(Math.random() * 4);
+                    const c = 5 + Math.floor(Math.random() * 10);
+                    return { question: `${a} × ${b} + ${c}`, answer: a * b + c, strategy: [a * b], hint: `${a}×${b}=${a*b}` };
+                }
+            },
+            {
+                type: 'mixed_sub_mult',
+                difficulty: 6,
+                hint: '順番に注意！',
+                generate: () => {
+                    const a = 3 + Math.floor(Math.random() * 4);
+                    const b = 2 + Math.floor(Math.random() * 4);
+                    const c = 2 + Math.floor(Math.random() * 5);
+                    const product = a * b;
+                    return { question: `${product + c} − ${a} × ${b}`, answer: c, strategy: [product], hint: `${a}×${b}=${product}` };
+                }
+            },
+            // === LEVEL 7: Squares & Patterns ===
+            {
+                type: 'square_numbers',
+                difficulty: 7,
+                hint: '同じ数同士！',
+                generate: () => {
+                    const a = 2 + Math.floor(Math.random() * 9);
+                    return { question: `${a} × ${a}`, answer: a * a, strategy: [], hint: `${a}²` };
+                }
+            },
+            {
+                type: 'double_half',
+                difficulty: 7,
+                hint: '2倍して半分！',
+                generate: () => {
+                    const a = 4 + Math.floor(Math.random() * 6);
+                    const b = 5 + Math.floor(Math.random() * 5);
+                    return { question: `${a} × ${b * 2}`, answer: a * b * 2, strategy: [a * 2, b], hint: `${a*2}×${b}` };
                 }
             }
         ];
@@ -1714,30 +1851,82 @@
         }
 
         function handleHit(target) {
-            const { isAnswer, isStrategy, number } = target.userData;
+            const { isAnswer, isStrategy, number, isBoss } = target.userData;
 
             // Store position before hiding
             const hitPosition = target.position.clone();
 
-            // Hide target
-            target.visible = false;
-            STATE.targets = STATE.targets.filter(t => t !== target);
-
             STATE.player.hits++;
 
-            // Explosion effect
-            createExplosion(hitPosition, isAnswer ? 0x4CAF50 : isStrategy ? 0xFFD700 : 0xff4444);
+            // Calculate score multiplier based on event
+            let multiplier = 1;
+            if (currentEvent === EVENTS.BONUS) multiplier = 2;
+            else if (currentEvent === EVENTS.SPEED) multiplier = 1.5;
+            else if (currentEvent === EVENTS.GOLDEN && isAnswer) multiplier = 5;
 
             // Crosshair pulse on hit
             pulseCrosshair();
 
+            // BOSS BATTLE LOGIC
+            if (isBoss && isAnswer) {
+                bossHealth--;
+                triggerScreenShake(0.6);
+                createExplosion(hitPosition, 0xff0000);
+                playSFX('correct');
+
+                if (bossHealth <= 0) {
+                    // Boss defeated!
+                    target.visible = false;
+                    STATE.targets = STATE.targets.filter(t => t !== target);
+
+                    const bossBonus = 300 * (currentWorld + 1);
+                    STATE.player.score += bossBonus;
+                    STATE.player.streak++;
+                    STATE.player.bestStreak = Math.max(STATE.player.bestStreak, STATE.player.streak);
+
+                    showFeedback(`👹 BOSS DOWN! +${bossBonus}`, '#ff0000');
+                    showFloatingScore(hitPosition, `+${bossBonus}`, '#ff0000');
+                    playSFX('levelup');
+                    triggerScreenShake(1.0);
+                    triggerBgFlash(0xff0000);
+
+                    // Big explosion
+                    for (let i = 0; i < 3; i++) {
+                        setTimeout(() => createExplosion(hitPosition.clone().add(new THREE.Vector3(
+                            (Math.random() - 0.5) * 2,
+                            (Math.random() - 0.5) * 2,
+                            0
+                        )), [0xff0000, 0xff8800, 0xffff00][i]), i * 100);
+                    }
+
+                    currentEvent = EVENTS.NORMAL;
+                    nextQuestion();
+                } else {
+                    // Boss still alive - show damage
+                    showFeedback(`👹 HIT! HP:${bossHealth}`, '#ff8800');
+                    target.scale.multiplyScalar(0.9);  // Shrink slightly
+                }
+                updateHUD();
+                return;
+            }
+
+            // Normal target logic
+            // Hide target
+            target.visible = false;
+            STATE.targets = STATE.targets.filter(t => t !== target);
+
+            // Explosion effect
+            createExplosion(hitPosition, isAnswer ? 0x4CAF50 : isStrategy ? 0xFFD700 : 0xff4444);
+
             if (isAnswer) {
-                STATE.player.score += CONFIG.SCORE_CORRECT;
+                const points = Math.floor(CONFIG.SCORE_CORRECT * multiplier);
+                STATE.player.score += points;
                 STATE.player.streak++;
                 STATE.player.bestStreak = Math.max(STATE.player.bestStreak, STATE.player.streak);
 
-                showFeedback(`+${CONFIG.SCORE_CORRECT}`, '#4CAF50');
-                showFloatingScore(hitPosition, `+${CONFIG.SCORE_CORRECT}`, '#4CAF50');
+                const label = multiplier > 1 ? `+${points} (x${multiplier})` : `+${points}`;
+                showFeedback(label, '#4CAF50');
+                showFloatingScore(hitPosition, label, '#4CAF50');
                 showCombo(STATE.player.streak);
                 playSFX('correct');
                 playComboSound(STATE.player.streak);
@@ -1749,21 +1938,24 @@
                 // Update streak fire effect
                 createStreakFire();
 
-                if (STATE.player.streak >= 5 && STATE.difficultyLevel < 4) {
+                // Difficulty progression
+                if (STATE.player.streak >= 5 && STATE.player.streak % 5 === 0 && STATE.difficultyLevel < 7) {
                     STATE.difficultyLevel++;
                     showStrategyHint('Level UP!');
                     playLevelUpSound();
                 }
 
+                currentEvent = EVENTS.NORMAL;  // Reset event after correct answer
                 nextQuestion();
 
             } else if (isStrategy) {
-                STATE.player.score += CONFIG.SCORE_SMART;
+                const points = Math.floor(CONFIG.SCORE_SMART * multiplier);
+                STATE.player.score += points;
                 STATE.player.streak++;
                 STATE.player.bestStreak = Math.max(STATE.player.bestStreak, STATE.player.streak);
 
-                showFeedback(`SMART +${CONFIG.SCORE_SMART}`, '#FFD700');
-                showFloatingScore(hitPosition, `SMART! +${CONFIG.SCORE_SMART}`, '#FFD700');
+                showFeedback(`SMART +${points}`, '#FFD700');
+                showFloatingScore(hitPosition, `SMART! +${points}`, '#FFD700');
                 showCombo(STATE.player.streak);
                 playSFX('smart');
                 playComboSound(STATE.player.streak);
@@ -2097,14 +2289,35 @@
         }
 
         function updateHUD() {
-            document.getElementById('questionCount').textContent = `${STATE.questionIndex + 1}/${CONFIG.QUESTIONS_PER_ROUND}`;
+            // World and stage info
+            const world = WORLDS[currentWorld];
+            document.getElementById('worldDisplay').textContent = world.name;
+            document.getElementById('stageDisplay').textContent = `Stage ${currentStage}/${world.stages}`;
+            document.getElementById('questionCount').textContent = `${STATE.questionIndex + 1}/${CONFIG.QUESTIONS_PER_STAGE}`;
             document.getElementById('timeDisplay').textContent = `${Math.ceil(Math.max(0, STATE.timeLeft))}s`;
 
+            // Event display
+            const eventEl = document.getElementById('eventDisplay');
+            if (currentEvent !== EVENTS.NORMAL) {
+                eventEl.style.display = 'block';
+                switch (currentEvent) {
+                    case EVENTS.BONUS: eventEl.textContent = '✨ BONUS x2!'; eventEl.style.background = 'gold'; break;
+                    case EVENTS.SPEED: eventEl.textContent = '⚡ SPEED!'; eventEl.style.background = '#ff6600'; break;
+                    case EVENTS.BOSS: eventEl.textContent = `👹 BOSS HP:${bossHealth}`; eventEl.style.background = '#ff0000'; break;
+                    case EVENTS.FRENZY: eventEl.textContent = '🎯 FRENZY!'; eventEl.style.background = '#ff00ff'; break;
+                    case EVENTS.GOLDEN: eventEl.textContent = '🌟 GOLDEN!'; eventEl.style.background = '#ffd700'; break;
+                }
+            } else {
+                eventEl.style.display = 'none';
+            }
+
+            // Score display
             const p = STATE.player;
             p.accuracy = p.shots > 0 ? Math.round((p.hits / p.shots) * 100) : 0;
 
             const scoreEl = document.getElementById('playerScore');
             scoreEl.textContent = `${p.score} pts | 🔥${p.streak} | 🎯${p.accuracy}%`;
+            document.getElementById('totalScore').textContent = `Total: ${totalScore + p.score}`;
 
             if (p.streak >= 5) {
                 scoreEl.classList.add('streak-glow');
@@ -2112,16 +2325,109 @@
                 scoreEl.classList.remove('streak-glow');
             }
 
+            // Question display with event styling
             if (STATE.currentQuestion) {
-                document.getElementById('questionDisplay').textContent = STATE.currentQuestion.question;
+                const qDisplay = document.getElementById('questionDisplay');
+                qDisplay.textContent = STATE.currentQuestion.question;
+                if (currentEvent === EVENTS.BOSS) {
+                    qDisplay.style.background = 'linear-gradient(135deg, #ff0000, #8b0000)';
+                } else if (currentEvent === EVENTS.BONUS) {
+                    qDisplay.style.background = 'linear-gradient(135deg, #ffd700, #ff8c00)';
+                } else {
+                    qDisplay.style.background = '';
+                }
             }
+
+            // Update background color based on world
+            if (STATE.scene) {
+                STATE.scene.background.lerp(new THREE.Color(world.color), 0.02);
+            }
+        }
+
+        // Trigger random events
+        function triggerRandomEvent() {
+            const rand = Math.random();
+            if (rand < 0.15) {
+                currentEvent = EVENTS.BONUS;
+                showFeedback('✨ BONUS TIME!', '#ffd700');
+                playSFX('levelup');
+            } else if (rand < 0.25) {
+                currentEvent = EVENTS.SPEED;
+                showFeedback('⚡ SPEED ROUND!', '#ff6600');
+            } else if (rand < 0.30) {
+                currentEvent = EVENTS.GOLDEN;
+                showFeedback('🌟 GOLDEN TARGET!', '#ffd700');
+            } else {
+                currentEvent = EVENTS.NORMAL;
+            }
+        }
+
+        // Boss battle event
+        function triggerBossEvent() {
+            currentEvent = EVENTS.BOSS;
+            bossHealth = 3 + currentWorld;  // More HP in later worlds
+            showFeedback('👹 BOSS BATTLE!', '#ff0000');
+            playSFX('levelup');
+            // Spawn boss target
+            spawnBossTarget();
+        }
+
+        function spawnBossTarget() {
+            // Clear existing targets
+            STATE.targets.forEach(t => {
+                t.visible = false;
+            });
+            STATE.targets = [];
+
+            // Create boss - a big balloon with the answer
+            const target = getTarget();
+            if (!target) return;
+
+            target.material.color.setHex(0xff0000);
+            target.material.emissive.setHex(0xff0000);
+            target.material.emissiveIntensity = 0.8;
+
+            target.position.set(0, 2, -10);
+            target.scale.set(2.5, 3, 2.5);  // Big boss!
+
+            const sprite = target.userData.sprite;
+            sprite.material.map = getNumberTexture(STATE.currentQuestion.answer);
+            sprite.material.needsUpdate = true;
+            sprite.scale.set(3, 3, 1);
+
+            target.userData = {
+                number: STATE.currentQuestion.answer,
+                isAnswer: true,
+                isStrategy: false,
+                isBoss: true,
+                velocity: new THREE.Vector3(0.02, 0, 0),
+                sprite,
+                pulsePhase: 0
+            };
+
+            target.visible = true;
+            STATE.targets.push(target);
         }
 
         function nextQuestion() {
             STATE.questionIndex++;
 
-            if (STATE.questionIndex >= CONFIG.QUESTIONS_PER_ROUND) {
-                endRound();
+            // Check for stage completion
+            if (STATE.questionIndex >= CONFIG.QUESTIONS_PER_STAGE) {
+                completeStage();
+                return;
+            }
+
+            // Random events (every 3-4 questions)
+            if (STATE.questionIndex > 0 && STATE.questionIndex % 3 === 0) {
+                triggerRandomEvent();
+            }
+
+            // Boss at end of each stage (question 7 of 8)
+            if (STATE.questionIndex === CONFIG.QUESTIONS_PER_STAGE - 1) {
+                STATE.currentQuestion = generateQuestion();
+                triggerBossEvent();
+                updateHUD();
                 return;
             }
 
@@ -2130,10 +2436,161 @@
             updateHUD();
         }
 
-        function endRound() {
+        function completeStage() {
+            // Add stage score to total
+            totalScore += STATE.player.score;
+            stagesCompleted++;
+
+            const world = WORLDS[currentWorld];
+
+            // Check if world completed
+            if (currentStage >= world.stages) {
+                // Move to next world
+                currentWorld++;
+                currentStage = 1;
+
+                if (currentWorld >= WORLDS.length) {
+                    // Game complete!
+                    endGame(true);
+                    return;
+                }
+
+                // Show world transition
+                showWorldTransition();
+            } else {
+                // Next stage in same world
+                currentStage++;
+                showStageTransition();
+            }
+        }
+
+        function showStageTransition() {
+            STATE.isPaused = true;
+
+            const overlay = document.createElement('div');
+            overlay.className = 'overlay';
+            overlay.id = 'stageTransition';
+            overlay.innerHTML = `
+                <h1>🎉 Stage Clear!</h1>
+                <p>Score: ${STATE.player.score} pts</p>
+                <p>Streak: 🔥${STATE.player.bestStreak}</p>
+                <p style="font-size:1.5rem;margin-top:1rem;">Next: Stage ${currentStage}</p>
+                <button class="btn" onclick="continueGame()">Continue →</button>
+            `;
+            document.body.appendChild(overlay);
+        }
+
+        function showWorldTransition() {
+            STATE.isPaused = true;
+
+            const nextWorld = WORLDS[currentWorld];
+            const overlay = document.createElement('div');
+            overlay.className = 'overlay';
+            overlay.id = 'worldTransition';
+            overlay.innerHTML = `
+                <h1>🏆 World Complete!</h1>
+                <p>Total Score: ${totalScore} pts</p>
+                <p style="font-size:2rem;margin:1.5rem 0;">${nextWorld.name}</p>
+                <p>新しい世界へ！難易度がアップ！</p>
+                <button class="btn" onclick="continueGame()">Enter World →</button>
+            `;
+            document.body.appendChild(overlay);
+
+            // Increase difficulty
+            STATE.difficultyLevel = Math.min(7, STATE.difficultyLevel + 1);
+        }
+
+        function continueGame() {
+            // Remove transition overlay
+            document.getElementById('stageTransition')?.remove();
+            document.getElementById('worldTransition')?.remove();
+
+            // Reset stage score but keep total
+            STATE.player.score = 0;
+            STATE.player.streak = 0;
+            STATE.player.shots = 0;
+            STATE.player.hits = 0;
+            STATE.questionIndex = 0;
+            STATE.timeLeft = CONFIG.TIME_LIMIT;
+            currentEvent = EVENTS.NORMAL;
+
+            STATE.currentQuestion = generateQuestion();
+            spawnTargets();
+            updateHUD();
+
+            STATE.isPaused = false;
+            STATE.gameStartTime = performance.now();
+        }
+
+        function endGame(victory) {
             STATE.isRunning = false;
             saveBestScores();
-            showRanking();
+            showFinalResults(victory);
+        }
+
+        function showFinalResults(victory) {
+            const overlay = document.createElement('div');
+            overlay.className = 'overlay';
+            overlay.id = 'finalResults';
+
+            if (victory) {
+                overlay.innerHTML = `
+                    <h1>🎊 CONGRATULATIONS! 🎊</h1>
+                    <p style="font-size:1.5rem;">すべてのワールドをクリア！</p>
+                    <p>Final Score: ${totalScore} pts</p>
+                    <p>Stages Completed: ${stagesCompleted}</p>
+                    <p>Best Streak: 🔥${STATE.player.bestStreak}</p>
+                    <div class="btn-group">
+                        <button class="btn" onclick="startNewGame()">New Game</button>
+                        <button class="btn" onclick="startEndlessMode()">Endless Mode</button>
+                    </div>
+                `;
+            } else {
+                overlay.innerHTML = `
+                    <h1>⏰ Time's Up!</h1>
+                    <p>World: ${WORLDS[currentWorld].name}</p>
+                    <p>Stage: ${currentStage}</p>
+                    <p>Total Score: ${totalScore} pts</p>
+                    <div class="btn-group">
+                        <button class="btn" onclick="retryStage()">Retry Stage</button>
+                        <button class="btn" onclick="startNewGame()">New Game</button>
+                    </div>
+                `;
+            }
+
+            document.body.appendChild(overlay);
+        }
+
+        function retryStage() {
+            document.getElementById('finalResults')?.remove();
+            STATE.player.score = 0;
+            STATE.player.streak = 0;
+            STATE.questionIndex = 0;
+            currentEvent = EVENTS.NORMAL;
+            startGame();
+        }
+
+        function startNewGame() {
+            document.getElementById('finalResults')?.remove();
+            currentWorld = 0;
+            currentStage = 1;
+            totalScore = 0;
+            stagesCompleted = 0;
+            STATE.difficultyLevel = 1;
+            startGame();
+        }
+
+        function startEndlessMode() {
+            document.getElementById('finalResults')?.remove();
+            currentWorld = WORLDS.length - 1;  // Champion world
+            currentStage = 999;  // Endless indicator
+            STATE.difficultyLevel = 7;
+            startGame();
+        }
+
+        function endRound() {
+            // Time ran out
+            endGame(false);
         }
 
         function saveBestScores() {
