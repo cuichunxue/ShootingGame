@@ -1408,11 +1408,15 @@
         // Improved classification of: tremor vs movement vs shooting
         // ============================================
 
-        // Shooting detection
+        // Shooting detection - IMPROVED with velocity history
         let prevIndexY = 0.5;
-        let flickVelocity = 0;
-        const FLICK_THRESHOLD = 0.05;  // Threshold for shooting flick
+        let velocityHistory = [];  // Track velocity over multiple frames
+        const VELOCITY_HISTORY_SIZE = 4;
+        const FLICK_THRESHOLD = 0.03;  // Lower threshold, but require consistency
+        const FLICK_ACCUMULATED = 0.08;  // Total movement required
         let canShoot = true;  // Prevents rapid fire
+        let lastShootTime = 0;
+        const SHOOT_COOLDOWN = 400;  // ms between shots
 
         // Position tracking for movement classification
         let posHistory = [];  // [{x, y, time}, ...]
@@ -1432,7 +1436,7 @@
                 if (STATE.crosshair) STATE.crosshair.visible = false;
                 updateHandStatus(false);
                 prevIndexY = 0.5;
-                flickVelocity = 0;
+                velocityHistory = [];
                 return;
             }
 
@@ -1467,14 +1471,40 @@
             // Gun gesture: thumb up is required
             const isGunPose = isThumbUp;
 
-            // === SHOOTING DETECTION ===
-            // Detect flick up (Y decreases when moving up in screen coordinates)
+            // === SHOOTING DETECTION - IMPROVED ===
+            // Track velocity over multiple frames for more reliable detection
             const currentY = indexTip.y;
-            flickVelocity = prevIndexY - currentY;  // Positive = moving up
+            const currentVelocity = prevIndexY - currentY;  // Positive = moving up
             prevIndexY = currentY;
 
-            // Simple and responsive flick detection
-            const isFlickUp = flickVelocity > FLICK_THRESHOLD && canShoot;
+            // Add to velocity history
+            velocityHistory.push(currentVelocity);
+            if (velocityHistory.length > VELOCITY_HISTORY_SIZE) {
+                velocityHistory.shift();
+            }
+
+            // Check for flick pattern:
+            // 1. Recent frames show consistent upward movement
+            // 2. Total accumulated movement exceeds threshold
+            // 3. Cooldown has passed
+            let isFlickUp = false;
+            const cooldownPassed = (now - lastShootTime) > SHOOT_COOLDOWN;
+
+            if (velocityHistory.length >= 2 && cooldownPassed && canShoot) {
+                // Check if recent velocities are all positive (upward)
+                const recentVelocities = velocityHistory.slice(-3);
+                const allUpward = recentVelocities.every(v => v > FLICK_THRESHOLD * 0.5);
+
+                // Calculate accumulated movement
+                const accumulated = recentVelocities.reduce((sum, v) => sum + Math.max(0, v), 0);
+
+                // Also check peak velocity
+                const peakVelocity = Math.max(...recentVelocities);
+
+                // Fire if: consistent upward movement with enough total distance OR strong single flick
+                isFlickUp = (allUpward && accumulated > FLICK_ACCUMULATED) ||
+                            (peakVelocity > FLICK_THRESHOLD * 2);
+            }
 
             // === CROSSHAIR POSITION (Movement vs Tremor Classification) ===
             const rawX = -(indexTip.x - 0.5) * 22;
@@ -1564,7 +1594,8 @@
                     // Fire when quick upward flick detected
                     if (isGunPose && isFlickUp) {
                         STATE.handState.state = 'fired';
-                        canShoot = false;  // Prevent rapid fire
+                        lastShootTime = now;  // Track shoot time
+                        velocityHistory = [];  // Clear velocity history after shot
                         fireShot();
                     } else if (!isGunPose) {
                         STATE.handState.state = 'idle';
@@ -1573,12 +1604,11 @@
 
                 case 'fired':
                     STATE.handState.state = 'cooldown';
-                    STATE.handState.cooldownEnd = now + CONFIG.GESTURE.COOLDOWN_MS;
+                    STATE.handState.cooldownEnd = now + SHOOT_COOLDOWN;
                     break;
 
                 case 'cooldown':
                     if (now >= STATE.handState.cooldownEnd) {
-                        canShoot = true;  // Re-enable shooting
                         if (isGunPose && isIndexExtended) {
                             STATE.handState.state = 'ready';
                         } else if (isGunPose) {
